@@ -1,106 +1,147 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Card } from '@/types/game';
+import { Card, Player } from '@/types/game';
 import { PlayerHand } from './PlayerHand';
-import { Trash2, CheckCircle2, Play } from 'lucide-react';
+import { Trash2, CheckCircle2, Play, AlertCircle, Clock } from 'lucide-react';
 
 interface DiscardPhaseProps {
   hand: Card[];
   discarded: Card[];
+  hasDiscarded: boolean;
+  cardsToDiscard: number;
+  players: Player[];
   isHost: boolean;
   onCardsReordered: (cards: Card[]) => void;
   onConfirmDiscard: (cardsToDiscard: Card[]) => void;
   onHostStartPlay: () => void;
-  totalPlayersCount: number;
-  playersDiscardedCount: number;
 }
 
 export const DiscardPhase: React.FC<DiscardPhaseProps> = ({
   hand,
   discarded,
+  hasDiscarded,
+  cardsToDiscard,
+  players,
   isHost,
   onCardsReordered,
   onConfirmDiscard,
   onHostStartPlay,
-  totalPlayersCount,
-  playersDiscardedCount,
 }) => {
   const [selectedForDiscard, setSelectedForDiscard] = useState<string[]>([]);
   const [isOrganizeMode, setIsOrganizeMode] = useState(false);
-  const hasDiscarded = discarded.length > 0;
+
+  const totalPlayers = players.length;
+  const playersDiscardedCount = players.filter((p) => p.hasDiscarded).length;
+  const allPlayersDiscarded = totalPlayers > 0 && playersDiscardedCount === totalPlayers;
 
   const handleCardClick = (card: Card) => {
     if (hasDiscarded) return;
-    setSelectedForDiscard((prev) =>
-      prev.includes(card.id) ? prev.filter((id) => id !== card.id) : [...prev, card.id]
-    );
+    setSelectedForDiscard((prev) => {
+      if (prev.includes(card.id)) {
+        return prev.filter((id) => id !== card.id);
+      }
+      if (prev.length >= cardsToDiscard) {
+        // Already selected exact count; replace the first selected
+        return [...prev.slice(1), card.id];
+      }
+      return [...prev, card.id];
+    });
   };
 
   const handleCommitDiscard = () => {
-    const cardsToDiscard = hand.filter((c) => selectedForDiscard.includes(c.id));
-    onConfirmDiscard(cardsToDiscard);
+    if (selectedForDiscard.length !== cardsToDiscard) return;
+    const cards = hand.filter((c) => selectedForDiscard.includes(c.id));
+    onConfirmDiscard(cards);
     setSelectedForDiscard([]);
   };
 
+  const remainingToSelect = cardsToDiscard - selectedForDiscard.length;
+
   return (
-    <div className="w-full flex flex-col items-center justify-between min-h-[60vh] p-4">
-      {/* Header Info */}
-      <div className="w-full max-w-2xl bg-zinc-900/80 border border-zinc-800 rounded-2xl p-4 text-center mb-4">
-        <h2 className="text-lg font-bold text-zinc-100 flex items-center justify-center gap-2">
-          <Trash2 className="w-5 h-5 text-amber-500" />
-          Discard Phase
+    <div className="w-full flex flex-col items-center justify-between min-h-[55vh] p-2 sm:p-4">
+      {/* Header Info Banner */}
+      <div className="w-full max-w-xl bg-zinc-900/90 border border-zinc-800 rounded-2xl p-4 text-center mb-3">
+        <h2 className="text-base sm:text-lg font-bold text-zinc-100 flex items-center justify-center gap-2">
+          <Trash2 className="w-4 h-4 sm:w-5 sm:h-5 text-amber-500" />
+          Discard Phase (Exactly {cardsToDiscard} {cardsToDiscard === 1 ? 'card' : 'cards'})
         </h2>
-        <p className="text-xs sm:text-sm text-zinc-400 mt-1">
+        <p className="text-xs text-zinc-400 mt-1">
           {hasDiscarded
-            ? `You discarded ${discarded.length} card${discarded.length === 1 ? '' : 's'}. Waiting for the round to begin.`
-            : 'Tap cards to select them for removal, or keep your hand as is and confirm.'}
+            ? `You discarded ${discarded.length} cards. Waiting for table to finish.`
+            : `Select exactly ${cardsToDiscard} cards from your hand to discard from this round.`}
         </p>
 
-        {/* Status bar */}
-        <div className="mt-3 flex items-center justify-center gap-4 text-xs">
-          <span className="text-zinc-400">
-            Players finalized:{' '}
-            <span className="text-zinc-200 font-mono font-bold">
-              {playersDiscardedCount} / {totalPlayersCount}
+        {/* Players Status List */}
+        <div className="mt-3 pt-3 border-t border-zinc-800/80 flex flex-wrap items-center justify-center gap-2 text-xs">
+          {players.map((p) => (
+            <span
+              key={p.id}
+              className={`px-2.5 py-1 rounded-full border text-[11px] flex items-center gap-1.5 ${
+                p.hasDiscarded
+                  ? 'bg-emerald-950/40 border-emerald-800/60 text-emerald-300'
+                  : 'bg-zinc-800/60 border-zinc-700/60 text-zinc-400'
+              }`}
+            >
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  p.hasDiscarded ? 'bg-emerald-400' : 'bg-amber-400 animate-pulse'
+                }`}
+              />
+              <span className="font-medium">{p.name}</span>
+              <span>{p.hasDiscarded ? '✓' : '...'}</span>
             </span>
-          </span>
-          {isHost && (
+          ))}
+        </div>
+
+        {/* Host Start Playing Button */}
+        {isHost && (
+          <div className="mt-4 pt-3 border-t border-zinc-800/80 flex items-center justify-center">
             <button
               type="button"
+              disabled={!allPlayersDiscarded}
               onClick={onHostStartPlay}
-              className="px-4 py-1.5 rounded-lg bg-white text-black font-bold hover:bg-zinc-200 transition-colors flex items-center gap-1.5 text-xs shadow-md"
+              className={`px-5 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 ${
+                allPlayersDiscarded
+                  ? 'bg-white text-black hover:bg-zinc-200 shadow-xl cursor-pointer'
+                  : 'bg-zinc-800/50 text-zinc-500 border border-zinc-800 cursor-not-allowed'
+              }`}
             >
-              <Play className="w-3.5 h-3.5 fill-black" />
-              Begin Tricks
+              {allPlayersDiscarded ? (
+                <>
+                  <Play className="w-4 h-4 fill-black" />
+                  <span>All Discards Complete — Start Tricks</span>
+                </>
+              ) : (
+                <>
+                  <Clock className="w-4 h-4 text-zinc-500" />
+                  <span>Waiting for all players to discard ({playersDiscardedCount}/{totalPlayers})</span>
+                </>
+              )}
             </button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
-      {/* Discard Action Bar */}
+      {/* Discard Action Bar for Current Player */}
       {!hasDiscarded && (
-        <div className="mb-4 flex items-center gap-3">
+        <div className="mb-3 flex flex-col items-center gap-2">
           <button
             type="button"
+            disabled={selectedForDiscard.length !== cardsToDiscard}
             onClick={handleCommitDiscard}
-            className={`px-5 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 shadow-lg ${
-              selectedForDiscard.length > 0
-                ? 'bg-red-600 hover:bg-red-500 text-white'
-                : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300'
+            className={`px-6 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 shadow-lg ${
+              selectedForDiscard.length === cardsToDiscard
+                ? 'bg-red-600 hover:bg-red-500 text-white cursor-pointer animate-pulse'
+                : 'bg-zinc-800/60 text-zinc-500 border border-zinc-800 cursor-not-allowed'
             }`}
           >
-            {selectedForDiscard.length > 0 ? (
-              <>
-                <Trash2 className="w-4 h-4" />
-                <span>Discard Selected ({selectedForDiscard.length})</span>
-              </>
-            ) : (
-              <>
-                <CheckCircle2 className="w-4 h-4" />
-                <span>Keep All Cards (No Discard)</span>
-              </>
-            )}
+            <Trash2 className="w-4 h-4" />
+            <span>
+              {selectedForDiscard.length === cardsToDiscard
+                ? `Confirm Discard (${cardsToDiscard} cards)`
+                : `Select ${remainingToSelect} more card${remainingToSelect === 1 ? '' : 's'} to discard`}
+            </span>
           </button>
         </div>
       )}
@@ -112,7 +153,11 @@ export const DiscardPhase: React.FC<DiscardPhaseProps> = ({
           onCardsReordered={onCardsReordered}
           onCardClick={handleCardClick}
           selectedCardIds={selectedForDiscard}
-          phaseLabel={hasDiscarded ? 'Discards finalized' : 'Tap to select discard'}
+          phaseLabel={
+            hasDiscarded
+              ? 'Discards submitted'
+              : `Selected ${selectedForDiscard.length}/${cardsToDiscard} to discard`
+          }
           isOrganizeMode={isOrganizeMode}
           setIsOrganizeMode={setIsOrganizeMode}
         />

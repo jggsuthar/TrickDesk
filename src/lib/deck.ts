@@ -17,12 +17,15 @@ export const RANK_VALUES: Record<Rank, number> = {
   'Q': 12,
   'K': 13,
   'A': 14,
+  'JOKER': 15,
 };
 
-export function createMasterDeck(numDecks: number = 1): Card[] {
+export function createMasterDeck(numDecks: number = 1, numJokers: number = 0): Card[] {
   const deck: Card[] = [];
   const safeDecks = Math.max(1, Math.min(4, numDecks));
+  const safeJokers = Math.max(0, Math.min(8, numJokers));
 
+  // 1. Add standard 52-card decks
   for (let d = 0; d < safeDecks; d++) {
     for (const suit of SUITS) {
       const color: 'red' | 'black' = suit === '♥' || suit === '♦' ? 'red' : 'black';
@@ -34,9 +37,24 @@ export function createMasterDeck(numDecks: number = 1): Card[] {
           value: RANK_VALUES[rank],
           color,
           deckIndex: d,
+          isJoker: false,
         });
       }
     }
+  }
+
+  // 2. Add Jokers
+  for (let j = 0; j < safeJokers; j++) {
+    const isRed = j % 2 === 1;
+    deck.push({
+      id: `joker-${j}-${Math.random().toString(36).substring(2, 7)}`,
+      suit: '★',
+      rank: 'JOKER',
+      value: RANK_VALUES.JOKER,
+      color: isRed ? 'red' : 'black',
+      deckIndex: 0,
+      isJoker: true,
+    });
   }
 
   return shuffleDeck(deck);

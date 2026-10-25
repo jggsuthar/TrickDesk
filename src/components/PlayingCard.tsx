@@ -40,6 +40,12 @@ export const SuitIcon: React.FC<{ suit: Suit; className?: string }> = ({ suit, c
           <path d="M50,15 C42,15 36,22 36,30 C36,36 39,41 43,44 C34,42 22,48 22,60 C22,70 31,76 41,74 C44,73 46,69 47,66 L45,88 L35,92 L65,92 L55,88 L53,66 C54,69 56,73 59,74 C69,76 78,70 78,60 C78,48 66,42 57,44 C61,41 64,36 64,30 C64,22 58,15 50,15 Z" />
         </svg>
       );
+    case '★':
+      return (
+        <svg viewBox="0 0 100 100" fill="currentColor" className={className} aria-label="Joker Star">
+          <path d="M50 8 L62 38 L94 40 L68 60 L78 92 L50 72 L22 92 L32 60 L6 40 L38 38 Z" />
+        </svg>
+      );
     default:
       return null;
   }
@@ -72,6 +78,47 @@ export const PlayingCard: React.FC<PlayingCardProps> = ({
     );
   }
 
+  // Joker Card Rendering
+  if (card.isJoker) {
+    return (
+      <div
+        onClick={onClick}
+        className={`
+          relative aspect-[5/7] rounded-xl bg-white select-none
+          border transition-all duration-200 overflow-hidden
+          ${isSelected ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-zinc-900 border-blue-500' : 'border-zinc-300 shadow-sm'}
+          ${isHoverable ? 'hover:-translate-y-1 hover:shadow-lg cursor-pointer' : ''}
+          ${isDimmed ? 'opacity-35 saturate-50' : 'opacity-100'}
+          ${isJiggling ? 'animate-jiggle' : ''}
+          ${colorClass}
+          ${className}
+        `}
+      >
+        {/* Top-Left JOKER */}
+        <div className="absolute top-1 left-1 sm:top-1.5 sm:left-1.5 flex flex-col items-center leading-none pointer-events-none">
+          <span className="font-black text-[9px] sm:text-[11px] tracking-tight">JKR</span>
+          <SuitIcon suit="★" className="w-2.5 h-2.5 sm:w-3 sm:h-3 mt-0.5" />
+        </div>
+
+        {/* Center Joker Emblem */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none p-2">
+          <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-full border border-current flex items-center justify-center mb-0.5">
+            <SuitIcon suit="★" className="w-5 h-5 sm:w-7 sm:h-7" />
+          </div>
+          <span className="text-[10px] sm:text-xs font-black tracking-widest uppercase">
+            JOKER
+          </span>
+        </div>
+
+        {/* Bottom-Right Inverted */}
+        <div className="absolute bottom-1 right-1 sm:bottom-1.5 sm:right-1.5 flex flex-col items-center leading-none rotate-180 pointer-events-none">
+          <span className="font-black text-[9px] sm:text-[11px] tracking-tight">JKR</span>
+          <SuitIcon suit="★" className="w-2.5 h-2.5 sm:w-3 sm:h-3 mt-0.5" />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       onClick={onClick}
@@ -95,7 +142,7 @@ export const PlayingCard: React.FC<PlayingCardProps> = ({
       </div>
 
       {/* Center Suit or Royal Emblem */}
-      <div className="absolute inset-0 flex items-center justify-center pointer-events-none p-3">
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none p-2 sm:p-3">
         {['J', 'Q', 'K'].includes(card.rank) ? (
           <div className="flex flex-col items-center justify-center">
             <span className="text-xl sm:text-3xl font-black opacity-90">{card.rank}</span>

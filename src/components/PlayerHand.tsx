@@ -6,6 +6,8 @@ import {
   closestCenter,
   KeyboardSensor,
   PointerSensor,
+  TouchSensor,
+  MouseSensor,
   useSensor,
   useSensors,
   DragStartEvent,
@@ -18,6 +20,7 @@ import {
   SortableContext,
   sortableKeyboardCoordinates,
   horizontalListSortingStrategy,
+  rectSortingStrategy,
 } from '@dnd-kit/sortable';
 import { Card, HandViewMode } from '@/types/game';
 import { SortableCard } from './SortableCard';
@@ -54,7 +57,6 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
   const lastOverIdRef = useRef<string | null>(null);
   const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Load view mode from storage on mount
   useEffect(() => {
     setViewMode(loadHandViewMode());
   }, []);
@@ -65,10 +67,17 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
     saveHandViewMode(next);
   };
 
+  // Mobile-optimized touch & mouse sensors
   const sensors = useSensors(
-    useSensor(PointerSensor, {
+    useSensor(MouseSensor, {
       activationConstraint: {
-        distance: 5, // 5px movement required before drag begins
+        distance: 5,
+      },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 60, // Rapid activation on touch
+        tolerance: 6,
       },
     }),
     useSensor(KeyboardSensor, {
@@ -81,7 +90,7 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
       try {
         navigator.vibrate(ms);
       } catch (e) {
-        // Haptics not allowed or supported
+        // Haptics fallback
       }
     }
   };
@@ -89,7 +98,7 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
   const handleDragStart = (event: DragStartEvent) => {
     setActiveCardId(String(event.active.id));
     lastOverIdRef.current = String(event.active.id);
-    triggerHaptic(20); // Light pop on pickup
+    triggerHaptic(20); // Pop on pickup
   };
 
   const handleDragOver = (event: DragOverEvent) => {
@@ -111,12 +120,11 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
     const newIndex = cards.findIndex((c) => c.id === over.id);
 
     if (oldIndex !== -1 && newIndex !== -1) {
-      // Save for undo
       setUndoState([...cards]);
       const reordered = arrayMove(cards, oldIndex, newIndex);
       onCardsReordered(reordered);
 
-      // Flash dropped card
+      // Flash dropped card border
       setFlashingCardId(String(active.id));
       setTimeout(() => setFlashingCardId(null), 500);
 
@@ -158,51 +166,55 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
 
   const activeCard = activeCardId ? cards.find((c) => c.id === activeCardId) : null;
 
+  // Sorting strategy: Grid (rectSortingStrategy) in organize mode, Horizontal in normal mode
+  const sortingStrategy = isOrganizeMode ? rectSortingStrategy : horizontalListSortingStrategy;
+
   return (
-    <div className="w-full flex flex-col items-center select-none pb-4 relative">
+    <div className={`w-full flex flex-col items-center select-none ${isOrganizeMode ? 'py-2' : 'pb-2'} relative`}>
       {/* Hand Controls Header */}
-      <div className="w-full max-w-4xl px-4 py-2 flex items-center justify-between gap-2 border-b border-zinc-800/80 mb-2">
+      <div className="w-full max-w-4xl px-3 py-1.5 flex items-center justify-between gap-2 border-b border-zinc-800/60 mb-1.5">
         <div className="flex items-center gap-2">
-          <span className="text-xs sm:text-sm font-semibold tracking-wider uppercase text-zinc-400">
-            Your Hand
+          <span className="text-xs font-semibold tracking-wider uppercase text-zinc-400">
+            {isOrganizeMode ? 'Organize Mode' : 'Your Hand'}
           </span>
-          <span className="text-xs px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 font-mono">
+          <span className="text-[11px] px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 font-mono">
             {cards.length} {cards.length === 1 ? 'card' : 'cards'}
           </span>
-          {phaseLabel && (
+          {phaseLabel && !isOrganizeMode && (
             <span className="hidden sm:inline-block text-xs text-zinc-500">• {phaseLabel}</span>
           )}
         </div>
 
         <div className="flex items-center gap-2">
-          {/* View Mode Toggle: Segregated vs Fanned */}
-          <button
-            type="button"
-            onClick={handleToggleViewMode}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 hover:border-zinc-500 text-xs text-zinc-300 hover:text-white transition-colors"
-            title={`Switch to ${viewMode === 'fanned' ? 'Segregated' : 'Fanned'} View`}
-          >
-            {viewMode === 'fanned' ? (
-              <>
-                <Layers className="w-3.5 h-3.5 text-zinc-400" />
-                <span className="hidden xs:inline">Fanned</span>
-              </>
-            ) : (
-              <>
-                <AlignJustify className="w-3.5 h-3.5 text-zinc-400" />
-                <span className="hidden xs:inline">Segregated</span>
-              </>
-            )}
-          </button>
+          {/* View Mode Toggle (hidden during organize mode since organize uses grid) */}
+          {!isOrganizeMode && (
+            <button
+              type="button"
+              onClick={handleToggleViewMode}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-xs text-zinc-300 transition-colors"
+            >
+              {viewMode === 'fanned' ? (
+                <>
+                  <Layers className="w-3.5 h-3.5 text-zinc-400" />
+                  <span className="hidden xs:inline">Fanned</span>
+                </>
+              ) : (
+                <>
+                  <AlignJustify className="w-3.5 h-3.5 text-zinc-400" />
+                  <span className="hidden xs:inline">Segregated</span>
+                </>
+              )}
+            </button>
+          )}
 
-          {/* Organize Mode Toggle */}
+          {/* Organize Mode Button */}
           <button
             type="button"
             onClick={() => setIsOrganizeMode((prev) => !prev)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+            className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all ${
               isOrganizeMode
-                ? 'bg-amber-500 text-black shadow-md shadow-amber-500/20'
-                : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white'
+                ? 'bg-amber-400 text-black shadow-lg shadow-amber-400/20'
+                : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200'
             }`}
           >
             {isOrganizeMode ? (
@@ -221,9 +233,15 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
       </div>
 
       {/* Cards Area with DnD Context */}
-      <div className="w-full max-w-5xl overflow-x-auto overflow-y-visible px-4 py-4 scroll-smooth">
+      <div
+        className={`w-full max-w-5xl ${
+          isOrganizeMode
+            ? 'max-h-[75vh] overflow-y-auto px-3 py-2 scroll-smooth'
+            : 'overflow-x-auto overflow-y-visible px-2 py-1 scroll-smooth'
+        }`}
+      >
         {cards.length === 0 ? (
-          <div className="h-28 flex items-center justify-center text-xs text-zinc-500 italic">
+          <div className="h-20 flex items-center justify-center text-xs text-zinc-500 italic">
             No cards in hand
           </div>
         ) : (
@@ -233,35 +251,62 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
             onDragStart={handleDragStart}
             onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}
+            autoScroll={{
+              threshold: { x: 0.05, y: 0.12 },
+              acceleration: 1.5,
+              interval: 20,
+            }}
           >
-            <SortableContext items={cards.map((c) => c.id)} strategy={horizontalListSortingStrategy}>
-              <div
-                className={`flex items-center justify-center min-w-max mx-auto py-2 ${
-                  viewMode === 'segregated' ? 'gap-2 sm:gap-3' : 'gap-0'
-                }`}
-              >
-                {cards.map((card, idx) => (
-                  <SortableCard
-                    key={card.id}
-                    card={card}
-                    index={idx}
-                    totalCards={cards.length}
-                    isOrganizeMode={isOrganizeMode}
-                    isDimmed={Boolean(activeCardId && activeCardId !== card.id)}
-                    viewMode={viewMode}
-                    flashingCardId={flashingCardId}
-                    onCardClick={onCardClick}
-                    onMoveCard={handleMoveCard}
-                    isSelectedForDiscard={selectedCardIds.includes(card.id)}
-                  />
-                ))}
-              </div>
+            <SortableContext items={cards.map((c) => c.id)} strategy={sortingStrategy}>
+              {isOrganizeMode ? (
+                /* Organize Mode: Responsive Grid based on screen width */
+                <div className="grid grid-cols-3 xs:grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-2 sm:gap-3 py-1">
+                  {cards.map((card, idx) => (
+                    <SortableCard
+                      key={card.id}
+                      card={card}
+                      index={idx}
+                      totalCards={cards.length}
+                      isOrganizeMode={true}
+                      isDimmed={Boolean(activeCardId && activeCardId !== card.id)}
+                      viewMode="segregated"
+                      flashingCardId={flashingCardId}
+                      onCardClick={onCardClick}
+                      onMoveCard={handleMoveCard}
+                      isSelectedForDiscard={selectedCardIds.includes(card.id)}
+                    />
+                  ))}
+                </div>
+              ) : (
+                /* Normal Mode: Compact Horizontal Hand (Fanned / Segregated) */
+                <div
+                  className={`flex items-center justify-center min-w-max mx-auto py-1 ${
+                    viewMode === 'segregated' ? 'gap-1.5 sm:gap-2' : 'gap-0'
+                  }`}
+                >
+                  {cards.map((card, idx) => (
+                    <SortableCard
+                      key={card.id}
+                      card={card}
+                      index={idx}
+                      totalCards={cards.length}
+                      isOrganizeMode={false}
+                      isDimmed={Boolean(activeCardId && activeCardId !== card.id)}
+                      viewMode={viewMode}
+                      flashingCardId={flashingCardId}
+                      onCardClick={onCardClick}
+                      onMoveCard={handleMoveCard}
+                      isSelectedForDiscard={selectedCardIds.includes(card.id)}
+                    />
+                  ))}
+                </div>
+              )}
             </SortableContext>
 
-            {/* Drag Overlay: Micro-interactions with 5% scale, deep shadow, grabbing cursor */}
+            {/* Drag Overlay: 5% scale, deep shadow, grabbing cursor */}
             <DragOverlay dropAnimation={null}>
               {activeCard ? (
-                <div className="w-20 sm:w-28 md:w-32 cursor-grabbing pointer-events-none transform scale-[1.05] shadow-[0_25px_50px_-12px_rgba(0,0,0,0.85)] rounded-xl ring-2 ring-zinc-400">
+                <div className="w-20 sm:w-26 md:w-30 cursor-grabbing pointer-events-none transform scale-[1.05] shadow-[0_25px_50px_-12px_rgba(0,0,0,0.9)] rounded-xl ring-2 ring-amber-400">
                   <PlayingCard card={activeCard} isHoverable={false} />
                 </div>
               ) : null}
@@ -270,9 +315,9 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
         )}
       </div>
 
-      {/* Reorder Undo Toast Notification */}
+      {/* Reorder Undo Toast Snackbar */}
       {showUndoToast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-zinc-900 border border-zinc-700 text-zinc-200 px-4 py-2.5 rounded-full shadow-2xl text-xs sm:text-sm animate-in fade-in slide-in-from-bottom-3 duration-200">
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-zinc-900 border border-zinc-700 text-zinc-200 px-4 py-2 rounded-full shadow-2xl text-xs sm:text-sm animate-in fade-in slide-in-from-bottom-2 duration-150">
           <span>Cards reordered.</span>
           <button
             type="button"

@@ -46,7 +46,7 @@ export function useGameRoom() {
   const stateRef = useRef<GameState | null>(null);
   stateRef.current = gameState;
 
-  // Sync state broadcast helper (Host only)
+  // Broadcast and persist helper (Host only)
   const broadcastAndSaveState = useCallback((nextState: GameState) => {
     setGameState(nextState);
     if (nextState.roomId) {
@@ -61,9 +61,7 @@ export function useGameRoom() {
   const handleMessage = useCallback(
     (message: PeerMessage) => {
       if (message.type === 'SYNC_STATE') {
-        // Player receives full synchronized state from Host
         setGameState((prevState) => {
-          // Preserve local hand sorting order if available
           if (prevState && playerId) {
             const currentHand = message.state.players.find((p) => p.id === playerId)?.hand || [];
             const savedOrder = loadHandOrder(message.state.roomId);
@@ -81,16 +79,13 @@ export function useGameRoom() {
         return;
       }
 
-      // Remaining messages are processed only by Host
+      // Actions processed by Host
       const currentState = stateRef.current;
       if (!currentState) return;
 
       switch (message.type) {
         case 'JOIN_ROOM': {
-          if (currentState.isLocked) {
-            // Room is locked, new joins not allowed
-            return;
-          }
+          if (currentState.isLocked) return;
 
           const existingPlayerIndex = currentState.players.findIndex((p) => p.id === message.playerId);
           let updatedPlayers: Player[];
@@ -108,6 +103,7 @@ export function useGameRoom() {
               isHost: false,
               connected: true,
               isReady: false,
+              hasDiscarded: false,
               hand: [],
               discarded: [],
               stacksWonThisRound: 0,
@@ -135,11 +131,10 @@ export function useGameRoom() {
           const player = currentState.players.find((p) => p.id === message.playerId);
           if (!player) return;
 
-          // Check if player has already played a card in current trick
+          // Check if already played a card in current trick
           const alreadyPlayed = currentState.desk.some((d) => d.playerId === message.playerId);
           if (alreadyPlayed) return;
 
-          // Remove card from player hand
           const newHand = player.hand.filter((c) => c.id !== message.card.id);
           const updatedPlayers = currentState.players.map((p) =>
             p.id === message.playerId ? { ...p, hand: newHand } : p
@@ -162,7 +157,6 @@ export function useGameRoom() {
         }
 
         case 'REQUEST_UNDO': {
-          // Reverse order constraint: only the LAST card played to desk can be undone
           const desk = currentState.desk;
           if (desk.length === 0) return;
           const lastCard = desk[desk.length - 1];
@@ -189,6 +183,7 @@ export function useGameRoom() {
                 ...p,
                 hand: remainingHand,
                 discarded: [...p.discarded, ...message.discardedCards],
+                hasDiscarded: true,
               };
             }
             return p;
@@ -215,18 +210,16 @@ export function useGameRoom() {
   const getNetwork = useCallback(() => {
     if (!networkRef.current) {
       networkRef.current = new P2PNetwork({
-        onPeerOpen: (id) => {
+        onPeerOpen: () => {
           setNetworkStatus('connected');
           setErrorMessage(null);
         },
         onPlayerConnected: (conn) => {
-          // When a client connects, broadcast current game state immediately
           if (stateRef.current) {
             conn.send({ type: 'SYNC_STATE', state: stateRef.current });
           }
         },
         onPlayerDisconnected: (disconnectedPeerId) => {
-          // If a peer disconnects, mark them disconnected
           if (stateRef.current) {
             const updated = stateRef.current.players.map((p) =>
               disconnectedPeerId.includes(p.id) ? { ...p, connected: false } : p
@@ -239,7 +232,7 @@ export function useGameRoom() {
         },
         onError: (err) => {
           console.error('P2P Network error:', err);
-          setErrorMessage(err.message || 'Network connection issue');
+          setErrorMessage(err.message || 'Network issue');
         },
       });
     }
@@ -256,7 +249,6 @@ export function useGameRoom() {
       setIsHost(true);
       setNetworkStatus('connecting');
 
-      // Check if existing state in localStorage for this room
       const existing = loadHostGameState(room);
       let initial: GameState;
 
@@ -269,6 +261,7 @@ export function useGameRoom() {
           isHost: true,
           connected: true,
           isReady: false,
+          hasDiscarded: false,
           hand: [],
           discarded: [],
           stacksWonThisRound: 0,
@@ -279,7 +272,9 @@ export function useGameRoom() {
           isLocked: false,
           phase: 'LOBBY',
           numDecks: 1,
-          cardsPerPlayer: 13,
+          numJokers: 0,
+          cardsPerPlayer: 10,
+          cardsToDiscard: 0,
           players: [hostPlayer],
           desk: [],
           roundNumber: 1,
@@ -337,6 +332,20 @@ export function useGameRoom() {
     }
   }, []);
 
+  // Host Action: Update Room Pool Config (Done ONCE for the room)
+  const updateRoomPoolConfig = useCallback(
+    (decks: number, jokers: number) => {
+      if (!isHost || !gameState) return;
+      const next: GameState = {
+        ...gameState,
+        numDecks: Math.max(1, Math.min(4, decks)),
+        numJokers: Math.max(0, Math.min(8, jokers)),
+      };
+      broadcastAndSaveState(next);
+    },
+    [isHost, gameState, broadcastAndSaveState]
+  );
+
   // Host Action: Toggle room lock
   const toggleRoomLock = useCallback(() => {
     if (!isHost || !gameState) return;
@@ -351,12 +360,12 @@ export function useGameRoom() {
     broadcastAndSaveState(next);
   }, [isHost, gameState, broadcastAndSaveState]);
 
-  // Host Action: Deal cards and start Discard or Playing phase
+  // Host Action: Deal round from Common Pool (using 2 configs: cardsPerPlayer, cardsToDiscard)
   const startDealing = useCallback(
-    (numDecks: number, cardsPerPlayer: number, enableDiscard: boolean) => {
+    (cardsPerPlayer: number, cardsToDiscard: number) => {
       if (!isHost || !gameState) return;
 
-      const masterDeck = createMasterDeck(numDecks);
+      const masterDeck = createMasterDeck(gameState.numDecks, gameState.numJokers);
       let deckPtr = 0;
 
       const updatedPlayers = gameState.players.map((player) => {
@@ -366,17 +375,18 @@ export function useGameRoom() {
           ...player,
           hand: playerHand,
           discarded: [],
+          hasDiscarded: cardsToDiscard === 0, // already true if no discard phase
           stacksWonThisRound: 0,
           isReady: false,
         };
       });
 
-      const nextPhase: GamePhase = enableDiscard ? 'DISCARD' : 'PLAYING';
+      const nextPhase: GamePhase = cardsToDiscard > 0 ? 'DISCARD' : 'PLAYING';
 
       const next: GameState = {
         ...gameState,
-        numDecks,
         cardsPerPlayer,
+        cardsToDiscard,
         players: updatedPlayers,
         desk: [],
         phase: nextPhase,
@@ -389,20 +399,19 @@ export function useGameRoom() {
     [isHost, gameState, broadcastAndSaveState]
   );
 
-  // Host Action: Move from Discard to Playing
+  // Host Action: Advance from Discard to Playing
   const hostStartPlaying = useCallback(() => {
     if (!isHost || !gameState) return;
     const next: GameState = { ...gameState, phase: 'PLAYING' };
     broadcastAndSaveState(next);
   }, [isHost, gameState, broadcastAndSaveState]);
 
-  // Player/Host Action: Play card to desk
+  // Player / Host: Play card to desk
   const playCard = useCallback(
     (card: Card) => {
       if (!gameState) return;
 
       if (isHost) {
-        // Host directly processes play
         const hostPlayer = gameState.players.find((p) => p.id === playerId);
         if (!hostPlayer) return;
 
@@ -428,7 +437,6 @@ export function useGameRoom() {
         };
         broadcastAndSaveState(next);
       } else {
-        // Player sends PLAY_CARD to Host
         if (networkRef.current) {
           networkRef.current.sendToHost({
             type: 'PLAY_CARD',
@@ -441,7 +449,7 @@ export function useGameRoom() {
     [gameState, isHost, playerId, broadcastAndSaveState]
   );
 
-  // Player Action: Request Undo (reverse order constraint)
+  // Reverse order undo request
   const requestUndo = useCallback(() => {
     if (!gameState) return;
     const desk = gameState.desk;
@@ -451,7 +459,6 @@ export function useGameRoom() {
     if (lastCard.playerId !== playerId) return;
 
     if (isHost) {
-      // Host can undo immediately
       const hostPlayer = gameState.players.find((p) => p.id === playerId);
       if (!hostPlayer) return;
 
@@ -527,7 +534,6 @@ export function useGameRoom() {
           : p
       );
 
-      // Check if this was the last trick of the round (are all hands now empty?)
       const allHandsEmpty = updatedPlayers.every((p) => p.hand.length === 0);
 
       let nextPhase: GamePhase = gameState.phase;
@@ -569,7 +575,6 @@ export function useGameRoom() {
   const hostUniversalUndo = useCallback(() => {
     if (!isHost || !gameState) return;
 
-    // 1. If desk is empty and there's a last awarded winner, undo trick award
     if (gameState.desk.length === 0 && gameState.lastAwardedWinner) {
       const { playerId: winnerId, deskSnapshot } = gameState.lastAwardedWinner;
       const updatedPlayers = gameState.players.map((p) =>
@@ -578,7 +583,6 @@ export function useGameRoom() {
           : p
       );
 
-      // If we were in ROUND_OVER, step back to PLAYING
       let nextHistory = gameState.roundHistory;
       if (gameState.phase === 'ROUND_OVER') {
         nextHistory = nextHistory.slice(0, nextHistory.length - 1);
@@ -596,7 +600,6 @@ export function useGameRoom() {
       return;
     }
 
-    // 2. If desk has cards, undo the last played card
     if (gameState.desk.length > 0) {
       const lastDeskCard = gameState.desk[gameState.desk.length - 1];
       const updatedDesk = gameState.desk.slice(0, gameState.desk.length - 1);
@@ -615,7 +618,7 @@ export function useGameRoom() {
     }
   }, [isHost, gameState, broadcastAndSaveState]);
 
-  // Player / Host: Discard cards
+  // Player / Host: Discard cards (exact count enforced)
   const confirmDiscard = useCallback(
     (discardedCards: Card[]) => {
       if (!gameState) return;
@@ -629,6 +632,7 @@ export function useGameRoom() {
               ...p,
               hand: remaining,
               discarded: [...p.discarded, ...discardedCards],
+              hasDiscarded: true,
             };
           }
           return p;
@@ -676,18 +680,19 @@ export function useGameRoom() {
   const hostNextRound = useCallback(() => {
     if (!isHost || !gameState) return;
 
-    // Strict Gate: 100% players must be ready
     const allReady = gameState.players.every((p) => p.isReady);
     if (!allReady) return;
 
     const resetPlayers = gameState.players.map((p) => ({
       ...p,
       isReady: false,
+      hasDiscarded: false,
       hand: [],
       discarded: [],
       stacksWonThisRound: 0,
     }));
 
+    // Moves to SETUP phase where Host chooses ONLY the 2 configs (#1 cards, #2 discards)
     const next: GameState = {
       ...gameState,
       roundNumber: gameState.roundNumber + 1,
@@ -701,7 +706,7 @@ export function useGameRoom() {
     broadcastAndSaveState(next);
   }, [isHost, gameState, broadcastAndSaveState]);
 
-  // Update local hand reordering and persist
+  // Update local hand reordering
   const updateHandOrder = useCallback(
     (reorderedHand: Card[]) => {
       if (!gameState) return;
@@ -744,6 +749,7 @@ export function useGameRoom() {
     createRoom,
     joinRoom,
     leaveRoom,
+    updateRoomPoolConfig,
     toggleRoomLock,
     proceedToSetup,
     startDealing,
