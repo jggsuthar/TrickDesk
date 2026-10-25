@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #09090b;
+  --foreground: #fafafa;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  overflow-x: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Custom scrollbars for clean aesthetic */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.35);
+}
+
+/* Keyframes for card organize jiggle mode */
+@keyframes card-jiggle {
+  0% { transform: rotate(-1.4deg) translateY(0); }
+  25% { transform: rotate(0deg) translateY(-1px); }
+  50% { transform: rotate(1.4deg) translateY(0); }
+  75% { transform: rotate(0deg) translateY(1px); }
+  100% { transform: rotate(-1.4deg) translateY(0); }
+}
+
+.animate-jiggle {
+  animation: card-jiggle 0.16s ease-in-out infinite;
+}
+
+/* Keyframe for drop success border flash */
+@keyframes drop-flash {
+  0% { border-color: rgba(34, 197, 94, 0.9); box-shadow: 0 0 16px rgba(34, 197, 94, 0.5); }
+  100% { border-color: rgba(255, 255, 255, 0.15); box-shadow: none; }
+}
+
+.animate-drop-flash {
+  animation: drop-flash 0.5s ease-out;
+}
