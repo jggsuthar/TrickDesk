@@ -16,8 +16,8 @@ import { P2PNetwork } from '@/lib/network';
 import {
   saveSession,
   loadSession,
-  saveHostGameState,
-  loadHostGameState,
+  saveLastGameState,
+  loadLastGameState,
   saveHandOrder,
   loadHandOrder,
   clearSession,
@@ -45,12 +45,14 @@ export function useGameRoom() {
   const networkRef = useRef<P2PNetwork | null>(null);
   const stateRef = useRef<GameState | null>(null);
   stateRef.current = gameState;
+  const playerIdRef = useRef<string>('');
+  playerIdRef.current = playerId;
 
   // Broadcast and persist helper (Host only)
   const broadcastAndSaveState = useCallback((nextState: GameState) => {
     setGameState(nextState);
     if (nextState.roomId) {
-      saveHostGameState(nextState.roomId, nextState);
+      saveLastGameState(nextState.roomId, nextState);
     }
     if (networkRef.current) {
       networkRef.current.broadcastState(nextState);
@@ -61,9 +63,14 @@ export function useGameRoom() {
   const handleMessage = useCallback(
     (message: PeerMessage) => {
       if (message.type === 'SYNC_STATE') {
-        setGameState((prevState) => {
-          if (prevState && playerId) {
-            const currentHand = message.state.players.find((p) => p.id === playerId)?.hand || [];
+        const curPlayerId = playerIdRef.current;
+        // Save latest state locally so refresh recovers all cards
+        if (message.state.roomId) {
+          saveLastGameState(message.state.roomId, message.state);
+        }
+        setGameState(() => {
+          if (curPlayerId) {
+            const currentHand = message.state.players.find((p) => p.id === curPlayerId)?.hand || [];
             const savedOrder = loadHandOrder(message.state.roomId);
             if (savedOrder && savedOrder.length > 0) {
               const orderMap = new Map(savedOrder.map((id, idx) => [id, idx]));
@@ -84,19 +91,21 @@ export function useGameRoom() {
       if (!currentState) return;
 
       switch (message.type) {
-        case 'JOIN_ROOM': {
-          if (currentState.isLocked) return;
-
+        case 'JOIN_ROOM':
+        case 'RECONNECT': {
           const existingPlayerIndex = currentState.players.findIndex((p) => p.id === message.playerId);
           let updatedPlayers: Player[];
 
           if (existingPlayerIndex >= 0) {
+            // Player already exists - preserve their cards, hand, stacks and mark connected!
             updatedPlayers = currentState.players.map((p, idx) =>
               idx === existingPlayerIndex
-                ? { ...p, name: message.playerName, connected: true }
+                ? { ...p, name: message.playerName || p.name, connected: true }
                 : p
             );
           } else {
+            // New player joining
+            if (currentState.isLocked) return;
             const newPlayer: Player = {
               id: message.playerId,
               name: message.playerName,
@@ -111,17 +120,6 @@ export function useGameRoom() {
             updatedPlayers = [...currentState.players, newPlayer];
           }
 
-          const next = { ...currentState, players: updatedPlayers };
-          broadcastAndSaveState(next);
-          break;
-        }
-
-        case 'RECONNECT': {
-          const updatedPlayers = currentState.players.map((p) =>
-            p.id === message.playerId
-              ? { ...p, name: message.playerName || p.name, connected: true }
-              : p
-          );
           const next = { ...currentState, players: updatedPlayers };
           broadcastAndSaveState(next);
           break;
@@ -203,7 +201,7 @@ export function useGameRoom() {
         }
       }
     },
-    [broadcastAndSaveState, playerId]
+    [broadcastAndSaveState]
   );
 
   // Initialize P2P Network instance
@@ -241,19 +239,27 @@ export function useGameRoom() {
 
   // Create room as Host
   const createRoom = useCallback(
-    async (hostName: string, customRoomId?: string) => {
+    async (hostName: string, customRoomId?: string, explicitPlayerId?: string) => {
       const room = customRoomId || generateRoomId();
-      const myId = playerId || 'host_' + Math.random().toString(36).substring(2, 9);
+      // Use existing persistent ID if available so refresh never changes user spot
+      const myId = explicitPlayerId || playerIdRef.current || 'host_' + Math.random().toString(36).substring(2, 9);
       setPlayerId(myId);
+      playerIdRef.current = myId;
       setPlayerName(hostName);
       setIsHost(true);
       setNetworkStatus('connecting');
 
-      const existing = loadHostGameState(room);
+      const existing = loadLastGameState(room);
       let initial: GameState;
 
       if (existing) {
-        initial = existing;
+        // Recover existing state and ensure host player connected is true
+        initial = {
+          ...existing,
+          players: existing.players.map((p) =>
+            p.id === myId || p.isHost ? { ...p, id: myId, name: hostName, isHost: true, connected: true } : p
+          ),
+        };
       } else {
         const hostPlayer: Player = {
           id: myId,
@@ -286,30 +292,37 @@ export function useGameRoom() {
 
       setGameState(initial);
       saveSession({ playerId: myId, playerName: hostName, roomId: room, isHost: true });
-      saveHostGameState(room, initial);
+      saveLastGameState(room, initial);
 
       const net = getNetwork();
       await net.initHost(room, myId);
     },
-    [playerId, getNetwork]
+    [getNetwork]
   );
 
   // Join room as Player
   const joinRoom = useCallback(
-    async (roomIdToJoin: string, name: string, isReconnect: boolean = false) => {
+    async (roomIdToJoin: string, name: string, isReconnect: boolean = false, explicitPlayerId?: string) => {
       const normalizedRoom = roomIdToJoin.trim().toUpperCase();
-      const myId = playerId || 'player_' + Math.random().toString(36).substring(2, 9);
+      const myId = explicitPlayerId || playerIdRef.current || 'player_' + Math.random().toString(36).substring(2, 9);
       setPlayerId(myId);
+      playerIdRef.current = myId;
       setPlayerName(name);
       setIsHost(false);
       setNetworkStatus('connecting');
+
+      // If cached state exists locally for client, load it immediately so cards never vanish
+      const cached = loadLastGameState(normalizedRoom);
+      if (cached) {
+        setGameState(cached);
+      }
 
       saveSession({ playerId: myId, playerName: name, roomId: normalizedRoom, isHost: false });
 
       const net = getNetwork();
       await net.initClient(normalizedRoom, myId, name, isReconnect);
     },
-    [playerId, getNetwork]
+    [getNetwork]
   );
 
   // Auto-recovery from localStorage on initial page load
@@ -317,20 +330,22 @@ export function useGameRoom() {
     const saved = loadSession();
     if (saved && saved.roomId) {
       setPlayerId(saved.playerId);
+      playerIdRef.current = saved.playerId;
       setPlayerName(saved.playerName);
       setIsHost(saved.isHost);
 
+      const cachedState = loadLastGameState(saved.roomId);
+      if (cachedState) {
+        setGameState(cachedState);
+      }
+
       if (saved.isHost) {
-        const existingState = loadHostGameState(saved.roomId);
-        if (existingState) {
-          setGameState(existingState);
-        }
-        createRoom(saved.playerName, saved.roomId);
+        createRoom(saved.playerName, saved.roomId, saved.playerId);
       } else {
-        joinRoom(saved.roomId, saved.playerName, true);
+        joinRoom(saved.roomId, saved.playerName, true, saved.playerId);
       }
     }
-  }, []);
+  }, [createRoom, joinRoom]);
 
   // Host Action: Update Room Pool Config (Done ONCE for the room)
   const updateRoomPoolConfig = useCallback(
@@ -360,7 +375,7 @@ export function useGameRoom() {
     broadcastAndSaveState(next);
   }, [isHost, gameState, broadcastAndSaveState]);
 
-  // Host Action: Deal round from Common Pool (using 2 configs: cardsPerPlayer, cardsToDiscard)
+  // Host Action: Deal round from Common Pool
   const startDealing = useCallback(
     (cardsPerPlayer: number, cardsToDiscard: number) => {
       if (!isHost || !gameState) return;
@@ -375,7 +390,7 @@ export function useGameRoom() {
           ...player,
           hand: playerHand,
           discarded: [],
-          hasDiscarded: cardsToDiscard === 0, // already true if no discard phase
+          hasDiscarded: cardsToDiscard === 0,
           stacksWonThisRound: 0,
           isReady: false,
         };
@@ -410,22 +425,23 @@ export function useGameRoom() {
   const playCard = useCallback(
     (card: Card) => {
       if (!gameState) return;
+      const curId = playerIdRef.current;
 
       if (isHost) {
-        const hostPlayer = gameState.players.find((p) => p.id === playerId);
+        const hostPlayer = gameState.players.find((p) => p.id === curId);
         if (!hostPlayer) return;
 
-        const alreadyPlayed = gameState.desk.some((d) => d.playerId === playerId);
+        const alreadyPlayed = gameState.desk.some((d) => d.playerId === curId);
         if (alreadyPlayed) return;
 
         const newHand = hostPlayer.hand.filter((c) => c.id !== card.id);
         const updatedPlayers = gameState.players.map((p) =>
-          p.id === playerId ? { ...p, hand: newHand } : p
+          p.id === curId ? { ...p, hand: newHand } : p
         );
 
         const newDeskCard: DeskCard = {
           card,
-          playerId,
+          playerId: curId,
           playerName: hostPlayer.name,
           playedAt: Date.now(),
         };
@@ -440,13 +456,13 @@ export function useGameRoom() {
         if (networkRef.current) {
           networkRef.current.sendToHost({
             type: 'PLAY_CARD',
-            playerId,
+            playerId: curId,
             card,
           });
         }
       }
     },
-    [gameState, isHost, playerId, broadcastAndSaveState]
+    [gameState, isHost, broadcastAndSaveState]
   );
 
   // Reverse order undo request
@@ -455,16 +471,17 @@ export function useGameRoom() {
     const desk = gameState.desk;
     if (desk.length === 0) return;
     const lastCard = desk[desk.length - 1];
+    const curId = playerIdRef.current;
 
-    if (lastCard.playerId !== playerId) return;
+    if (lastCard.playerId !== curId) return;
 
     if (isHost) {
-      const hostPlayer = gameState.players.find((p) => p.id === playerId);
+      const hostPlayer = gameState.players.find((p) => p.id === curId);
       if (!hostPlayer) return;
 
       const updatedDesk = desk.slice(0, desk.length - 1);
       const updatedPlayers = gameState.players.map((p) =>
-        p.id === playerId ? { ...p, hand: [...p.hand, lastCard.card] } : p
+        p.id === curId ? { ...p, hand: [...p.hand, lastCard.card] } : p
       );
       const next: GameState = {
         ...gameState,
@@ -477,12 +494,12 @@ export function useGameRoom() {
       if (networkRef.current) {
         networkRef.current.sendToHost({
           type: 'REQUEST_UNDO',
-          playerId,
+          playerId: curId,
         });
       }
       setTimeout(() => setIsUndoPending(false), 5000);
     }
-  }, [gameState, playerId, isHost, broadcastAndSaveState]);
+  }, [gameState, isHost, broadcastAndSaveState]);
 
   // Host Action: Approve Undo Request
   const approveUndoRequest = useCallback(
@@ -525,7 +542,7 @@ export function useGameRoom() {
           origin: { y: 0.6 },
         });
       } catch (e) {
-        // Confetti fallback
+        // Fallback
       }
 
       const updatedPlayers = gameState.players.map((p) =>
@@ -618,14 +635,15 @@ export function useGameRoom() {
     }
   }, [isHost, gameState, broadcastAndSaveState]);
 
-  // Player / Host: Discard cards (exact count enforced)
+  // Player / Host: Discard cards
   const confirmDiscard = useCallback(
     (discardedCards: Card[]) => {
       if (!gameState) return;
+      const curId = playerIdRef.current;
 
       if (isHost) {
         const updatedPlayers = gameState.players.map((p) => {
-          if (p.id === playerId) {
+          if (p.id === curId) {
             const discardIds = new Set(discardedCards.map((c) => c.id));
             const remaining = p.hand.filter((c) => !discardIds.has(c.id));
             return {
@@ -643,23 +661,24 @@ export function useGameRoom() {
         if (networkRef.current) {
           networkRef.current.sendToHost({
             type: 'DISCARD_CARDS',
-            playerId,
+            playerId: curId,
             discardedCards,
           });
         }
       }
     },
-    [gameState, isHost, playerId, broadcastAndSaveState]
+    [gameState, isHost, broadcastAndSaveState]
   );
 
   // Player / Host: Toggle Ready in Round Over
   const toggleReady = useCallback(
     (isReady: boolean) => {
       if (!gameState) return;
+      const curId = playerIdRef.current;
 
       if (isHost) {
         const updatedPlayers = gameState.players.map((p) =>
-          p.id === playerId ? { ...p, isReady } : p
+          p.id === curId ? { ...p, isReady } : p
         );
         const next = { ...gameState, players: updatedPlayers };
         broadcastAndSaveState(next);
@@ -667,13 +686,13 @@ export function useGameRoom() {
         if (networkRef.current) {
           networkRef.current.sendToHost({
             type: 'PLAYER_READY',
-            playerId,
+            playerId: curId,
             isReady,
           });
         }
       }
     },
-    [gameState, isHost, playerId, broadcastAndSaveState]
+    [gameState, isHost, broadcastAndSaveState]
   );
 
   // Host Action: Initiate next round setup (strictly gated by 100% ready)
@@ -692,7 +711,6 @@ export function useGameRoom() {
       stacksWonThisRound: 0,
     }));
 
-    // Moves to SETUP phase where Host chooses ONLY the 2 configs (#1 cards, #2 discards)
     const next: GameState = {
       ...gameState,
       roundNumber: gameState.roundNumber + 1,
@@ -710,23 +728,25 @@ export function useGameRoom() {
   const updateHandOrder = useCallback(
     (reorderedHand: Card[]) => {
       if (!gameState) return;
+      const curId = playerIdRef.current;
       saveHandOrder(
         gameState.roomId,
         reorderedHand.map((c) => c.id)
       );
 
       const updatedPlayers = gameState.players.map((p) =>
-        p.id === playerId ? { ...p, hand: reorderedHand } : p
+        p.id === curId ? { ...p, hand: reorderedHand } : p
       );
 
       const next = { ...gameState, players: updatedPlayers };
       setGameState(next);
+      saveLastGameState(gameState.roomId, next);
 
       if (isHost) {
         broadcastAndSaveState(next);
       }
     },
-    [gameState, playerId, isHost, broadcastAndSaveState]
+    [gameState, isHost, broadcastAndSaveState]
   );
 
   const leaveRoom = useCallback(() => {

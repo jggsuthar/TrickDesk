@@ -43,25 +43,29 @@ export function clearSession(): void {
   }
 }
 
-export function saveHostGameState(roomId: string, state: GameState): void {
+export function saveLastGameState(roomId: string, state: GameState): void {
   if (typeof window === 'undefined' || !roomId) return;
   try {
     localStorage.setItem(KEYS.STATE_PREFIX + roomId, JSON.stringify(state));
   } catch (e) {
-    console.error('Failed to save host game state:', e);
+    console.error('Failed to save game state:', e);
   }
 }
 
-export function loadHostGameState(roomId: string): GameState | null {
+export function loadLastGameState(roomId: string): GameState | null {
   if (typeof window === 'undefined' || !roomId) return null;
   try {
     const raw = localStorage.getItem(KEYS.STATE_PREFIX + roomId);
     return raw ? JSON.parse(raw) : null;
   } catch (e) {
-    console.error('Failed to load host game state:', e);
+    console.error('Failed to load game state:', e);
     return null;
   }
 }
+
+// Alias for backward compatibility
+export const saveHostGameState = saveLastGameState;
+export const loadHostGameState = loadLastGameState;
 
 export function saveHandViewMode(mode: HandViewMode): void {
   if (typeof window === 'undefined') return;
