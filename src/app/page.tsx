@@ -72,7 +72,6 @@ export default function Home() {
     }
   };
 
-  // If no room is active, render Join / Create screen
   if (!gameState) {
     return (
       <main className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col justify-center">
@@ -91,7 +90,6 @@ export default function Home() {
   const currentDiscarded = currentPlayer?.discarded || [];
   const hasDiscarded = currentPlayer?.hasDiscarded || false;
 
-  // Reverse order undo check
   const lastDeskCard =
     gameState.desk.length > 0 ? gameState.desk[gameState.desk.length - 1] : null;
   const canRequestUndo =
@@ -100,9 +98,9 @@ export default function Home() {
     lastDeskCard.playerId === playerId;
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col justify-between selection:bg-zinc-800 selection:text-white">
+    <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col selection:bg-zinc-800 selection:text-white">
       {/* Top Header Navigation */}
-      <header className="w-full border-b border-zinc-900 bg-zinc-950/80 backdrop-blur-md sticky top-0 z-40 px-3 sm:px-4 py-2 sm:py-2.5">
+      <header className="w-full border-b border-zinc-900 bg-zinc-950/90 backdrop-blur-md sticky top-0 z-40 px-3 sm:px-4 py-2 sm:py-2.5">
         <div className="max-w-6xl mx-auto flex items-center justify-between gap-2">
           {/* Logo & Room Code */}
           <div className="flex items-center gap-2 sm:gap-3">
@@ -153,7 +151,6 @@ export default function Home() {
 
           {/* Right Action Controls */}
           <div className="flex items-center gap-1.5 sm:gap-2">
-            {/* Host Universal Undo Button */}
             {isHost && gameState.phase === 'PLAYING' && (
               <button
                 type="button"
@@ -166,7 +163,6 @@ export default function Home() {
               </button>
             )}
 
-            {/* History Modal Trigger */}
             {gameState.roundHistory.length > 0 && (
               <button
                 type="button"
@@ -178,7 +174,6 @@ export default function Home() {
               </button>
             )}
 
-            {/* Leave Room Button */}
             <button
               type="button"
               onClick={leaveRoom}
@@ -191,8 +186,8 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Main Game Phase Content */}
-      <main className="flex-1 flex flex-col items-center justify-between w-full max-w-6xl mx-auto px-1 sm:px-2">
+      {/* Main Game Content (Natural, tight layout without dead void) */}
+      <main className="flex-1 w-full max-w-6xl mx-auto px-1 sm:px-3 py-2 flex flex-col items-center">
         {gameState.phase === 'LOBBY' && (
           <LobbyView
             roomId={gameState.roomId}
@@ -234,8 +229,8 @@ export default function Home() {
         )}
 
         {gameState.phase === 'PLAYING' && (
-          <div className="w-full flex-1 flex flex-col justify-between py-1 gap-1">
-            {/* The Central Desk: HIDDEN during Organize Mode */}
+          <div className="w-full flex flex-col items-center gap-2">
+            {/* The Central Desk: Hidden completely during Organize Mode */}
             {!isOrganizeMode && (
               <Desk
                 cards={gameState.desk}
@@ -249,8 +244,8 @@ export default function Home() {
               />
             )}
 
-            {/* Player Hand with DnD Kit (expands to full screen grid when Organize is active) */}
-            <div className={`w-full ${isOrganizeMode ? 'flex-1 my-auto' : 'mt-auto'}`}>
+            {/* Player Hand (renders directly on page in organize mode) */}
+            <div className="w-full">
               <PlayerHand
                 cards={currentHand}
                 onCardsReordered={updateHandOrder}

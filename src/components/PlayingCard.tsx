@@ -14,7 +14,7 @@ interface PlayingCardProps {
   showBack?: boolean;
 }
 
-export const SuitIcon: React.FC<{ suit: Suit; className?: string }> = ({ suit, className = 'w-4 h-4' }) => {
+export const SuitIcon: React.FC<{ suit: Suit; className?: string }> = ({ suit, className = 'w-3.5 h-3.5' }) => {
   switch (suit) {
     case '♠':
       return (
@@ -67,10 +67,10 @@ export const PlayingCard: React.FC<PlayingCardProps> = ({
   if (showBack) {
     return (
       <div
-        className={`relative aspect-[5/7] rounded-xl bg-gradient-to-br from-zinc-800 to-zinc-950 border border-zinc-700/80 shadow-md p-1.5 flex items-center justify-center select-none ${className}`}
+        className={`relative w-full h-full aspect-[5/7] rounded-xl bg-gradient-to-br from-zinc-800 to-zinc-950 border border-zinc-700/80 shadow-md p-1.5 flex items-center justify-center select-none ${className}`}
       >
         <div className="w-full h-full rounded-lg border border-dashed border-zinc-600/50 bg-zinc-900/60 flex items-center justify-center">
-          <div className="w-8 h-8 rounded-full border border-zinc-500/40 flex items-center justify-center text-zinc-400 font-bold text-xs">
+          <div className="w-7 h-7 rounded-full border border-zinc-500/40 flex items-center justify-center text-zinc-400 font-bold text-xs">
             TD
           </div>
         </div>
@@ -78,15 +78,15 @@ export const PlayingCard: React.FC<PlayingCardProps> = ({
     );
   }
 
-  // Joker Card Rendering
+  // Joker Card
   if (card.isJoker) {
     return (
       <div
         onClick={onClick}
         className={`
-          relative aspect-[5/7] rounded-xl bg-white select-none
-          border transition-all duration-200 overflow-hidden
-          ${isSelected ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-zinc-900 border-blue-500' : 'border-zinc-300 shadow-sm'}
+          relative w-full h-full aspect-[5/7] rounded-xl bg-white select-none
+          border transition-all duration-200 overflow-hidden shadow-sm
+          ${isSelected ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-zinc-900 border-blue-500' : 'border-zinc-300'}
           ${isHoverable ? 'hover:-translate-y-1 hover:shadow-lg cursor-pointer' : ''}
           ${isDimmed ? 'opacity-35 saturate-50' : 'opacity-100'}
           ${isJiggling ? 'animate-jiggle' : ''}
@@ -94,23 +94,20 @@ export const PlayingCard: React.FC<PlayingCardProps> = ({
           ${className}
         `}
       >
-        {/* Top-Left JOKER */}
         <div className="absolute top-1 left-1 sm:top-1.5 sm:left-1.5 flex flex-col items-center leading-none pointer-events-none">
           <span className="font-black text-[9px] sm:text-[11px] tracking-tight">JKR</span>
           <SuitIcon suit="★" className="w-2.5 h-2.5 sm:w-3 sm:h-3 mt-0.5" />
         </div>
 
-        {/* Center Joker Emblem */}
-        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none p-2">
-          <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-full border border-current flex items-center justify-center mb-0.5">
-            <SuitIcon suit="★" className="w-5 h-5 sm:w-7 sm:h-7" />
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none p-1.5">
+          <div className="w-6 h-6 sm:w-9 sm:h-9 rounded-full border border-current flex items-center justify-center mb-0.5">
+            <SuitIcon suit="★" className="w-4 h-4 sm:w-6 sm:h-6" />
           </div>
-          <span className="text-[10px] sm:text-xs font-black tracking-widest uppercase">
+          <span className="text-[9px] sm:text-xs font-black tracking-widest uppercase">
             JOKER
           </span>
         </div>
 
-        {/* Bottom-Right Inverted */}
         <div className="absolute bottom-1 right-1 sm:bottom-1.5 sm:right-1.5 flex flex-col items-center leading-none rotate-180 pointer-events-none">
           <span className="font-black text-[9px] sm:text-[11px] tracking-tight">JKR</span>
           <SuitIcon suit="★" className="w-2.5 h-2.5 sm:w-3 sm:h-3 mt-0.5" />
@@ -123,9 +120,9 @@ export const PlayingCard: React.FC<PlayingCardProps> = ({
     <div
       onClick={onClick}
       className={`
-        relative aspect-[5/7] rounded-xl bg-white select-none
-        border transition-all duration-200
-        ${isSelected ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-zinc-900 border-blue-500' : 'border-zinc-300 shadow-sm'}
+        relative w-full h-full aspect-[5/7] rounded-xl bg-white select-none
+        border transition-all duration-200 overflow-hidden shadow-sm
+        ${isSelected ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-zinc-900 border-blue-500' : 'border-zinc-300'}
         ${isHoverable ? 'hover:-translate-y-1 hover:shadow-lg cursor-pointer' : ''}
         ${isDimmed ? 'opacity-35 saturate-50' : 'opacity-100'}
         ${isJiggling ? 'animate-jiggle' : ''}
@@ -134,32 +131,32 @@ export const PlayingCard: React.FC<PlayingCardProps> = ({
       `}
     >
       {/* Top-Left Corner Rank & Suit */}
-      <div className="absolute top-1.5 left-1.5 sm:top-2 sm:left-2 flex flex-col items-center leading-none pointer-events-none">
-        <span className="font-extrabold text-xs sm:text-base tracking-tighter">
+      <div className="absolute top-1 left-1 sm:top-1.5 sm:left-1.5 flex flex-col items-center leading-none pointer-events-none">
+        <span className="font-black text-xs sm:text-sm md:text-base tracking-tighter">
           {card.rank}
         </span>
         <SuitIcon suit={card.suit} className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5 mt-0.5" />
       </div>
 
       {/* Center Suit or Royal Emblem */}
-      <div className="absolute inset-0 flex items-center justify-center pointer-events-none p-2 sm:p-3">
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none p-1.5">
         {['J', 'Q', 'K'].includes(card.rank) ? (
           <div className="flex flex-col items-center justify-center">
-            <span className="text-xl sm:text-3xl font-black opacity-90">{card.rank}</span>
-            <SuitIcon suit={card.suit} className="w-4 h-4 sm:w-6 sm:h-6 mt-1 opacity-85" />
+            <span className="text-base sm:text-2xl md:text-3xl font-black opacity-90">{card.rank}</span>
+            <SuitIcon suit={card.suit} className="w-3.5 h-3.5 sm:w-5 sm:h-5 opacity-85 mt-0.5" />
           </div>
         ) : card.rank === 'A' ? (
-          <SuitIcon suit={card.suit} className="w-8 h-8 sm:w-12 sm:h-12 drop-shadow-sm" />
+          <SuitIcon suit={card.suit} className="w-7 h-7 sm:w-10 sm:h-10 md:w-12 md:h-12 drop-shadow-sm" />
         ) : (
-          <div className="flex flex-col items-center gap-1 opacity-85">
-            <SuitIcon suit={card.suit} className="w-5 h-5 sm:w-8 sm:h-8" />
+          <div className="flex flex-col items-center gap-0.5 opacity-85">
+            <SuitIcon suit={card.suit} className="w-4 h-4 sm:w-6 sm:h-6 md:w-8 md:h-8" />
           </div>
         )}
       </div>
 
       {/* Bottom-Right Corner (Inverted 180deg) */}
-      <div className="absolute bottom-1.5 right-1.5 sm:bottom-2 sm:right-2 flex flex-col items-center leading-none rotate-180 pointer-events-none">
-        <span className="font-extrabold text-xs sm:text-base tracking-tighter">
+      <div className="absolute bottom-1 right-1 sm:bottom-1.5 sm:right-1.5 flex flex-col items-center leading-none rotate-180 pointer-events-none">
+        <span className="font-black text-xs sm:text-sm md:text-base tracking-tighter">
           {card.rank}
         </span>
         <SuitIcon suit={card.suit} className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5 mt-0.5" />

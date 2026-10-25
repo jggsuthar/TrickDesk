@@ -49,17 +49,17 @@ export const SortableCard: React.FC<SortableCardProps> = ({
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition: transition || 'transform 250ms cubic-bezier(0.2, 0, 0, 1)',
-    // touchAction: 'none' ensures touch drag on mobile immediately interacts with DnD without scrolling
     touchAction: isOrganizeMode ? 'none' : 'auto',
   };
 
   const isFlashing = flashingCardId === card.id;
 
-  // In standard (non-organize) mode, fanned view uses negative margin overlap
+  // Staggered overlap for fanned view in normal mode
+  // Using exact pixel margins based on mobile card width (76px)
   const fanStyle: React.CSSProperties =
     !isOrganizeMode && viewMode === 'fanned' && index > 0
       ? {
-          marginLeft: totalCards > 10 ? '-2.2rem' : totalCards > 6 ? '-1.8rem' : '-1.4rem',
+          marginLeft: totalCards > 12 ? '-2.5rem' : totalCards > 7 ? '-2.2rem' : '-1.8rem',
         }
       : {};
 
@@ -71,7 +71,7 @@ export const SortableCard: React.FC<SortableCardProps> = ({
         className={`relative ${
           isOrganizeMode
             ? 'w-full aspect-[5/7]'
-            : 'w-18 sm:w-24 md:w-28 aspect-[5/7] shrink-0'
+            : 'w-[76px] h-[106px] sm:w-[94px] sm:h-[131px] md:w-[106px] md:h-[148px] shrink-0'
         } rounded-xl border-2 border-dashed border-zinc-600/70 bg-zinc-800/30 transition-all duration-200`}
       />
     );
@@ -84,7 +84,9 @@ export const SortableCard: React.FC<SortableCardProps> = ({
       className={`relative select-none ${
         isOrganizeMode
           ? 'w-full aspect-[5/7]'
-          : `shrink-0 w-18 sm:w-24 md:w-28 ${viewMode === 'fanned' ? 'hover:z-30 hover:-translate-y-1.5' : ''}`
+          : `shrink-0 w-[76px] h-[106px] sm:w-[94px] sm:h-[131px] md:w-[106px] md:h-[148px] ${
+              viewMode === 'fanned' ? 'hover:z-30 hover:-translate-y-2' : ''
+            }`
       }`}
       {...(isOrganizeMode ? { ...attributes, ...listeners } : {})}
     >
@@ -106,7 +108,7 @@ export const SortableCard: React.FC<SortableCardProps> = ({
           isSelected={isSelectedForDiscard}
         />
 
-        {/* 3-dot accessible options menu */}
+        {/* 3-dot accessible menu button */}
         {isOrganizeMode && (
           <div
             className="absolute top-1 right-1 z-20"
