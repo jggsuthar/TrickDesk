@@ -11,6 +11,7 @@ import { PlayerHand } from '@/components/PlayerHand';
 import { UndoRequestModal } from '@/components/UndoModals';
 import { RoundSummaryModal } from '@/components/RoundSummaryModal';
 import { HistoryModal } from '@/components/HistoryModal';
+import { LeaveRoomModal } from '@/components/LeaveRoomModal';
 import {
   RotateCcw,
   LogOut,
@@ -52,6 +53,7 @@ export default function Home() {
   const [initialRoomParam, setInitialRoomParam] = useState<string>('');
   const [copiedCode, setCopiedCode] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [showLeaveConfirmModal, setShowLeaveConfirmModal] = useState(false);
   const [isOrganizeMode, setIsOrganizeMode] = useState(false);
 
   useEffect(() => {
@@ -178,8 +180,8 @@ export default function Home() {
 
             <button
               type="button"
-              onClick={leaveRoom}
-              className="p-1.5 rounded-lg bg-zinc-900 hover:bg-red-950/60 text-zinc-400 hover:text-red-400 transition-colors"
+              onClick={() => setShowLeaveConfirmModal(true)}
+              className="p-1.5 rounded-lg bg-zinc-900 hover:bg-red-950/60 text-zinc-400 hover:text-red-400 transition-colors cursor-pointer"
               title="Leave Room"
             >
               <LogOut className="w-3.5 h-3.5" />
@@ -291,6 +293,18 @@ export default function Home() {
           onClose={() => setShowHistoryModal(false)}
         />
       )}
+
+      {/* Leave Room Double Confirmation Modal */}
+      <LeaveRoomModal
+        isOpen={showLeaveConfirmModal}
+        roomId={gameState.roomId}
+        isHost={isHost}
+        onConfirm={() => {
+          setShowLeaveConfirmModal(false);
+          leaveRoom();
+        }}
+        onCancel={() => setShowLeaveConfirmModal(false)}
+      />
     </div>
   );
 }
