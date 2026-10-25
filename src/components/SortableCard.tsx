@@ -55,7 +55,6 @@ export const SortableCard: React.FC<SortableCardProps> = ({
   const isFlashing = flashingCardId === card.id;
 
   // Staggered overlap for fanned view in normal mode
-  // Using exact pixel margins based on mobile card width (76px)
   const fanStyle: React.CSSProperties =
     !isOrganizeMode && viewMode === 'fanned' && index > 0
       ? {
@@ -70,8 +69,8 @@ export const SortableCard: React.FC<SortableCardProps> = ({
         style={{ ...style, ...fanStyle }}
         className={`relative ${
           isOrganizeMode
-            ? 'w-full aspect-[5/7]'
-            : 'w-[76px] h-[106px] sm:w-[94px] sm:h-[131px] md:w-[106px] md:h-[148px] shrink-0'
+            ? 'w-full aspect-[167/243]'
+            : 'w-[76px] h-[110px] sm:w-[94px] sm:h-[136px] md:w-[106px] md:h-[154px] shrink-0'
         } rounded-xl border-2 border-dashed border-zinc-600/70 bg-zinc-800/30 transition-all duration-200`}
       />
     );
@@ -83,8 +82,8 @@ export const SortableCard: React.FC<SortableCardProps> = ({
       style={{ ...style, ...fanStyle }}
       className={`relative select-none ${
         isOrganizeMode
-          ? 'w-full aspect-[5/7]'
-          : `shrink-0 w-[76px] h-[106px] sm:w-[94px] sm:h-[131px] md:w-[106px] md:h-[148px] ${
+          ? 'w-full aspect-[167/243]'
+          : `shrink-0 w-[76px] h-[110px] sm:w-[94px] sm:h-[136px] md:w-[106px] md:h-[154px] ${
               viewMode === 'fanned' ? 'hover:z-30 hover:-translate-y-2' : ''
             }`
       }`}

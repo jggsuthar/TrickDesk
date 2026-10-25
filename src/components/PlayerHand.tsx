@@ -61,6 +61,7 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
   const [showScrollRail, setShowScrollRail] = useState(false);
   const [isScrubbing, setIsScrubbing] = useState(false);
   const scrollRailRef = useRef<HTMLDivElement>(null);
+  const thumbDragStartRef = useRef<{ startY: number; startScrollTop: number } | null>(null);
 
   // Active drag pointer position tracking for progressive edge autoscroll
   const dragPointerYRef = useRef<number | null>(null);
@@ -87,7 +88,7 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
     setShowScrollRail(true);
 
     const railHeight = clientHeight - 120; // Room for top header + bottom margins
-    const thumbH = Math.max(48, (clientHeight / scrollHeight) * railHeight);
+    const thumbH = Math.max(50, (clientHeight / scrollHeight) * railHeight);
     const thumbT = (scrollTop / maxScroll) * (railHeight - thumbH);
 
     setScrollThumbHeight(thumbH);
@@ -108,41 +109,61 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
     }
   }, [isOrganizeMode, updateScrollIndicator, cards.length]);
 
-  // Direct 1:1 screen touch scrubber: scrolls immediately where finger touches or drags on rail
-  const scrollDirectToClientY = useCallback((clientY: number) => {
-    const rail = scrollRailRef.current;
-    if (!rail) return;
-    const rect = rail.getBoundingClientRect();
-    const relativeY = Math.max(0, Math.min(rect.height, clientY - rect.top));
-    const ratio = relativeY / rect.height;
-    const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
-    if (maxScroll > 0) {
-      window.scrollTo({ top: ratio * maxScroll, behavior: 'auto' });
-    }
-  }, []);
+  // Direct touch movement scroller handler: high sensitivity matching natural touch movement!
+  const handleRailPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsScrubbing(true);
 
-  const handleRailPointerDown = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setIsScrubbing(true);
-      scrollDirectToClientY(e.clientY);
-      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    },
-    [scrollDirectToClientY]
-  );
+    thumbDragStartRef.current = {
+      startY: e.clientY,
+      startScrollTop: window.scrollY || document.documentElement.scrollTop,
+    };
+
+    const rail = scrollRailRef.current;
+    if (rail) {
+      const rect = rail.getBoundingClientRect();
+      const relativeY = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
+      const ratio = relativeY / rect.height;
+      const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+      if (maxScroll > 0) {
+        window.scrollTo({ top: ratio * maxScroll, behavior: 'auto' });
+      }
+    }
+
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  }, []);
 
   const handleRailPointerMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
-      if (!isScrubbing) return;
+      if (!isScrubbing || !thumbDragStartRef.current) return;
       e.preventDefault();
-      scrollDirectToClientY(e.clientY);
+
+      const doc = document.documentElement;
+      const clientHeight = doc.clientHeight;
+      const scrollHeight = doc.scrollHeight;
+      const maxScroll = scrollHeight - clientHeight;
+      if (maxScroll <= 0) return;
+
+      const railHeight = clientHeight - 120;
+      const deltaY = e.clientY - thumbDragStartRef.current.startY;
+
+      // Sensitivity: Dynamic multiplier ensuring 1px of finger movement moves content proportionally
+      // (minimum 2.5x sensitivity so user never has to drag through the entire screen)
+      const touchSensitivity = Math.max(2.5, maxScroll / Math.max(1, railHeight - 50));
+      const newScroll = thumbDragStartRef.current.startScrollTop + deltaY * touchSensitivity;
+
+      window.scrollTo({
+        top: Math.max(0, Math.min(maxScroll, newScroll)),
+        behavior: 'auto',
+      });
     },
-    [isScrubbing, scrollDirectToClientY]
+    [isScrubbing]
   );
 
   const handleRailPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     setIsScrubbing(false);
+    thumbDragStartRef.current = null;
     try {
       (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
     } catch (err) {
@@ -176,13 +197,11 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
         const bottomEdgeThreshold = winHeight - 110; // Starts near bottom edge
 
         if (clientY < topEdgeThreshold) {
-          // Progressively faster the closer to or past top edge
           const distanceIntoZone = topEdgeThreshold - clientY;
           const progressRatio = Math.min(3, Math.max(0.2, distanceIntoZone / 70));
           const scrollSpeed = 3 + progressRatio * 18; // 3px up to 21px per frame
           window.scrollBy({ top: -scrollSpeed, behavior: 'auto' });
         } else if (clientY > bottomEdgeThreshold) {
-          // Progressively faster the closer to or past bottom edge
           const distanceIntoZone = clientY - bottomEdgeThreshold;
           const progressRatio = Math.min(3, Math.max(0.2, distanceIntoZone / 70));
           const scrollSpeed = 3 + progressRatio * 18; // 3px up to 21px per frame
@@ -369,12 +388,12 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
         </div>
       </div>
 
-      {/* Cards Area (Direct on the main page, no inner box) */}
+      {/* Cards Area (Direct on the main page) */}
       <div
         className={`w-full max-w-5xl ${
           isOrganizeMode
             ? 'px-2 sm:px-4 py-3'
-            : 'overflow-x-auto overflow-y-visible px-3 py-3 min-h-[125px] sm:min-h-[155px] scroll-smooth'
+            : 'overflow-x-auto overflow-y-visible px-3 py-3 min-h-[130px] sm:min-h-[160px] scroll-smooth'
         }`}
       >
         {cards.length === 0 ? (
@@ -436,7 +455,7 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
             {/* Drag Overlay with 5% scale & deep shadow */}
             <DragOverlay dropAnimation={null}>
               {activeCard ? (
-                <div className="w-[76px] h-[106px] sm:w-[94px] sm:h-[131px] md:w-[106px] md:h-[148px] cursor-grabbing pointer-events-none transform scale-[1.05] shadow-[0_25px_50px_-12px_rgba(0,0,0,0.95)] rounded-xl ring-2 ring-yellow-400">
+                <div className="w-[76px] h-[110px] sm:w-[94px] sm:h-[136px] md:w-[106px] md:h-[154px] cursor-grabbing pointer-events-none transform scale-[1.05] shadow-[0_25px_50px_-12px_rgba(0,0,0,0.95)] rounded-xl ring-2 ring-yellow-400">
                   <PlayingCard card={activeCard} isHoverable={false} />
                 </div>
               ) : null}
@@ -445,7 +464,7 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
         )}
       </div>
 
-      {/* ══════════ DIRECT-TOUCH YELLOW SCROLLER (Always Visible in Organize Mode) ══════════ */}
+      {/* ══════════ DIRECT-TOUCH HIGH-SENSITIVITY YELLOW SCROLLER ══════════ */}
       {isOrganizeMode && showScrollRail && (
         <div
           ref={scrollRailRef}
@@ -453,16 +472,16 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
           onPointerMove={handleRailPointerMove}
           onPointerUp={handleRailPointerUp}
           onPointerCancel={handleRailPointerUp}
-          className="fixed right-0 top-[100px] bottom-[20px] w-[28px] z-50 flex items-start justify-center cursor-pointer select-none"
+          className="fixed right-0 top-[100px] bottom-[20px] w-[36px] z-50 flex items-start justify-center cursor-pointer select-none"
           style={{ touchAction: 'none' }}
-          title="Drag anywhere on this yellow bar to scroll the page instantly"
+          title="Drag anywhere on this yellow bar to scroll the page with natural touch sensitivity"
         >
           {/* Track groove */}
-          <div className="absolute inset-y-0 right-[4px] w-[20px] rounded-full bg-zinc-900/90 border border-zinc-700/80 shadow-md backdrop-blur-sm" />
+          <div className="absolute inset-y-0 right-[4px] w-[22px] rounded-full bg-zinc-900/90 border border-zinc-700/80 shadow-md backdrop-blur-sm" />
 
-          {/* Yellow Thumb — big, bright yellow, 1:1 responsive touch */}
+          {/* Yellow Thumb — big, bright yellow, direct touch sensitivity */}
           <div
-            className={`absolute right-[4px] w-[20px] rounded-full transition-transform flex items-center justify-center border-2 border-zinc-900 shadow-xl ${
+            className={`absolute right-[4px] w-[22px] rounded-full transition-transform flex items-center justify-center border-2 border-zinc-900 shadow-xl ${
               isScrubbing
                 ? 'bg-yellow-300 scale-105'
                 : 'bg-yellow-400 hover:bg-yellow-300'
@@ -471,10 +490,10 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
               top: `${scrollThumbTop}px`,
               height: `${scrollThumbHeight}px`,
               touchAction: 'none',
-              minHeight: '48px',
+              minHeight: '50px',
             }}
           >
-            <GripVertical className="w-3.5 h-3.5 text-zinc-900 pointer-events-none" />
+            <GripVertical className="w-4 h-4 text-zinc-950 pointer-events-none" />
           </div>
         </div>
       )}
