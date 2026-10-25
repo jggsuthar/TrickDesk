@@ -56,7 +56,7 @@ export interface GameState {
   phase: GamePhase;
   // Permanent Room Pool Configuration (set once in Lobby by Host)
   numDecks: number; // 1 to 4
-  numJokers: number; // 0 to 8
+  numJokers: number; // 0 to 12
   // Per-Round Configuration (set each round by Host)
   cardsPerPlayer: number;
   cardsToDiscard: number; // 0 = no discard phase, > 0 = exact cards every player must discard

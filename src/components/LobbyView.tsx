@@ -13,6 +13,8 @@ import {
   Share2,
   Layers,
   Sparkles,
+  Minus,
+  Plus,
 } from 'lucide-react';
 
 interface LobbyViewProps {
@@ -153,25 +155,57 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                 </div>
               </div>
 
-              {/* Jokers selection (0-8) */}
+              {/* Jokers selection (0 to 12, all odd and even numbers) */}
               <div>
-                <div className="flex justify-between text-xs text-zinc-400 mb-1.5">
-                  <span>Joker Cards in Master Pool</span>
-                  <span className="font-bold text-zinc-200">{numJokers} Jokers</span>
+                <div className="flex justify-between items-center text-xs text-zinc-400 mb-1.5">
+                  <span>Joker Cards in Master Pool (0–12)</span>
+                  <span className="font-bold text-zinc-200">
+                    {numJokers === 0 ? 'No Jokers' : `${numJokers} Joker${numJokers === 1 ? '' : 's'}`}
+                  </span>
                 </div>
-                <div className="grid grid-cols-5 gap-1.5">
-                  {[0, 2, 4, 6, 8].map((j) => (
+
+                {/* Stepper control */}
+                <div className="flex items-center justify-between p-2 rounded-xl bg-zinc-900 border border-zinc-800 mb-2">
+                  <button
+                    type="button"
+                    disabled={numJokers <= 0}
+                    onClick={() => onUpdateRoomPoolConfig(numDecks, Math.max(0, numJokers - 1))}
+                    className="w-8 h-8 rounded-lg bg-zinc-800 hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center text-zinc-200 transition-colors"
+                    title="Decrease Jokers"
+                  >
+                    <Minus className="w-3.5 h-3.5" />
+                  </button>
+
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-base font-mono font-bold text-white">{numJokers}</span>
+                    <span className="text-xs text-zinc-400">Jokers</span>
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={numJokers >= 12}
+                    onClick={() => onUpdateRoomPoolConfig(numDecks, Math.min(12, numJokers + 1))}
+                    className="w-8 h-8 rounded-lg bg-zinc-800 hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center text-zinc-200 transition-colors"
+                    title="Increase Jokers"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* Quick select buttons for all 13 values: 0 to 12 */}
+                <div className="grid grid-cols-7 gap-1">
+                  {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((j) => (
                     <button
                       key={j}
                       type="button"
                       onClick={() => onUpdateRoomPoolConfig(numDecks, j)}
-                      className={`py-1.5 rounded-xl text-xs font-bold transition-all border ${
+                      className={`py-1.5 rounded-lg text-xs font-bold transition-all border ${
                         numJokers === j
-                          ? 'bg-white text-black border-white shadow-md'
-                          : 'bg-zinc-900 text-zinc-300 border-zinc-800 hover:border-zinc-700'
+                          ? 'bg-white text-black border-white shadow-md scale-105'
+                          : 'bg-zinc-900 text-zinc-300 border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800/60'
                       }`}
                     >
-                      {j === 0 ? 'None' : `${j} 🃏`}
+                      {j === 0 ? '0' : j}
                     </button>
                   ))}
                 </div>
@@ -189,7 +223,9 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
               </div>
               <div className="flex justify-between">
                 <span>Jokers:</span>
-                <span className="font-bold text-zinc-200">{numJokers} cards</span>
+                <span className="font-bold text-zinc-200">
+                  {numJokers === 0 ? 'None' : `${numJokers} Joker${numJokers === 1 ? '' : 's'}`}
+                </span>
               </div>
               <span className="text-[10px] text-zinc-500 italic mt-0.5">
                 Configured by Host. Same for all players in this table.

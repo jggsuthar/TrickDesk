@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { Card, Player } from '@/types/game';
 import { PlayerHand } from './PlayerHand';
-import { Trash2, Play, Clock } from 'lucide-react';
+import { Trash2, Play, Clock, Check } from 'lucide-react';
 
 interface DiscardPhaseProps {
   hand: Card[];
@@ -68,7 +68,7 @@ export const DiscardPhase: React.FC<DiscardPhaseProps> = ({
           </h2>
           <p className="text-xs text-zinc-400 mt-1">
             {hasDiscarded
-              ? `You discarded ${discarded.length} card${discarded.length === 1 ? '' : 's'}. Waiting for table to finish.`
+              ? `✓ Discard complete (${discarded.length} discarded, ${hand.length} cards in play). Waiting for other players...`
               : `Tap exactly ${cardsToDiscard} card${cardsToDiscard === 1 ? '' : 's'} from your hand to remove from this round.`}
           </p>
 
@@ -96,7 +96,7 @@ export const DiscardPhase: React.FC<DiscardPhaseProps> = ({
 
           {/* Host Start Playing Button */}
           {isHost && (
-            <div className="mt-3 pt-2.5 border-t border-zinc-800/80">
+            <div className="mt-3 pt-2.5 border-t border-zinc-800/80 flex flex-col items-center">
               <button
                 type="button"
                 disabled={!allPlayersDiscarded}
@@ -115,16 +115,37 @@ export const DiscardPhase: React.FC<DiscardPhaseProps> = ({
                 ) : (
                   <>
                     <Clock className="w-4 h-4 text-zinc-500" />
-                    <span>Waiting ({playersDiscardedCount}/{totalPlayers})</span>
+                    <span>Waiting for Discards ({playersDiscardedCount}/{totalPlayers})</span>
                   </>
                 )}
               </button>
+
+              {!allPlayersDiscarded && (
+                <button
+                  type="button"
+                  onClick={onHostStartPlay}
+                  className="mt-2 text-[11px] text-zinc-500 hover:text-amber-400 underline underline-offset-2 transition-colors cursor-pointer"
+                  title="Force start tricks if a player dropped or is disconnected"
+                >
+                  Host Override: Force Start Tricks
+                </button>
+              )}
             </div>
           )}
         </div>
       )}
 
-      {/* Discard Confirm Button: Hidden during Organize Mode */}
+      {/* Discard Status Banner (When discarded) */}
+      {!isOrganizeMode && hasDiscarded && (
+        <div className="mb-2">
+          <div className="px-5 py-2 rounded-xl bg-emerald-950/60 border border-emerald-800/80 text-emerald-300 font-bold text-xs sm:text-sm flex items-center gap-2 shadow-md">
+            <Check className="w-4 h-4 text-emerald-400" />
+            <span>Discard Submitted ({discarded.length} card{discarded.length === 1 ? '' : 's'})</span>
+          </div>
+        </div>
+      )}
+
+      {/* Discard Confirm Button: Hidden during Organize Mode or after discard */}
       {!isOrganizeMode && !hasDiscarded && (
         <div className="mb-2">
           <button

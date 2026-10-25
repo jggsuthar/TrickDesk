@@ -23,7 +23,7 @@ export const RANK_VALUES: Record<Rank, number> = {
 export function createMasterDeck(numDecks: number = 1, numJokers: number = 0): Card[] {
   const deck: Card[] = [];
   const safeDecks = Math.max(1, Math.min(4, numDecks));
-  const safeJokers = Math.max(0, Math.min(8, numJokers));
+  const safeJokers = Math.max(0, Math.min(12, numJokers));
 
   // 1. Add standard 52-card decks
   for (let d = 0; d < safeDecks; d++) {

@@ -173,8 +173,9 @@ export function useGameRoom() {
         }
 
         case 'DISCARD_CARDS': {
+          console.log('[Host] Received DISCARD_CARDS from player:', message.playerId, message.discardedCards?.length);
           const updatedPlayers = currentState.players.map((p) => {
-            if (p.id === message.playerId) {
+            if (p.id === message.playerId || p.id.trim() === message.playerId?.trim()) {
               const discardIds = new Set(message.discardedCards.map((c) => c.id));
               const remainingHand = p.hand.filter((c) => !discardIds.has(c.id));
               return {
@@ -354,7 +355,7 @@ export function useGameRoom() {
       const next: GameState = {
         ...gameState,
         numDecks: Math.max(1, Math.min(4, decks)),
-        numJokers: Math.max(0, Math.min(8, jokers)),
+        numJokers: Math.max(0, Math.min(12, jokers)),
       };
       broadcastAndSaveState(next);
     },
@@ -640,23 +641,33 @@ export function useGameRoom() {
     (discardedCards: Card[]) => {
       if (!gameState) return;
       const curId = playerIdRef.current;
+      if (!curId) return;
+
+      const discardIds = new Set(discardedCards.map((c) => c.id));
+      const updatedPlayers = gameState.players.map((p) => {
+        if (p.id === curId || p.id.trim() === curId.trim()) {
+          const remaining = p.hand.filter((c) => !discardIds.has(c.id));
+          return {
+            ...p,
+            hand: remaining,
+            discarded: [...p.discarded, ...discardedCards],
+            hasDiscarded: true,
+          };
+        }
+        return p;
+      });
+
+      const next = { ...gameState, players: updatedPlayers };
+
+      // Optimistically apply discard state locally for both Host and Non-Host
+      setGameState(next);
+      stateRef.current = next;
+      saveLastGameState(gameState.roomId, next);
 
       if (isHost) {
-        const updatedPlayers = gameState.players.map((p) => {
-          if (p.id === curId) {
-            const discardIds = new Set(discardedCards.map((c) => c.id));
-            const remaining = p.hand.filter((c) => !discardIds.has(c.id));
-            return {
-              ...p,
-              hand: remaining,
-              discarded: [...p.discarded, ...discardedCards],
-              hasDiscarded: true,
-            };
-          }
-          return p;
-        });
-        const next = { ...gameState, players: updatedPlayers };
-        broadcastAndSaveState(next);
+        if (networkRef.current) {
+          networkRef.current.broadcastState(next);
+        }
       } else {
         if (networkRef.current) {
           networkRef.current.sendToHost({
@@ -667,7 +678,7 @@ export function useGameRoom() {
         }
       }
     },
-    [gameState, isHost, broadcastAndSaveState]
+    [gameState, isHost]
   );
 
   // Player / Host: Toggle Ready in Round Over

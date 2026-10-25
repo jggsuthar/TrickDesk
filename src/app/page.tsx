@@ -85,7 +85,9 @@ export default function Home() {
     );
   }
 
-  const currentPlayer = gameState.players.find((p) => p.id === playerId);
+  const currentPlayer = gameState.players.find(
+    (p) => p.id === playerId || (playerId && p.id.trim() === playerId.trim())
+  );
   const currentHand = currentPlayer?.hand || [];
   const currentDiscarded = currentPlayer?.discarded || [];
   const hasDiscarded = currentPlayer?.hasDiscarded || false;
