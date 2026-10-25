@@ -36,7 +36,7 @@ export const DiscardPhase: React.FC<DiscardPhaseProps> = ({
   const allPlayersDiscarded = totalPlayers > 0 && playersDiscardedCount === totalPlayers;
 
   const handleCardClick = (card: Card) => {
-    if (hasDiscarded) return;
+    if (hasDiscarded || isOrganizeMode) return;
     setSelectedForDiscard((prev) => {
       if (prev.includes(card.id)) {
         return prev.filter((id) => id !== card.id);
@@ -59,25 +59,25 @@ export const DiscardPhase: React.FC<DiscardPhaseProps> = ({
 
   return (
     <div className="w-full flex flex-col items-center py-2 px-1 sm:px-3">
-      {/* Header Info Banner: Hidden during Organize Mode */}
+      {/* Header Info Banner: Hidden during Organize Mode to maximize grid space */}
       {!isOrganizeMode && (
-        <div className="w-full max-w-xl bg-zinc-900/90 border border-zinc-800 rounded-2xl p-3 sm:p-4 text-center mb-3 shadow-lg">
+        <div className="w-full max-w-xl bg-zinc-900/90 border border-zinc-800 rounded-2xl p-3 sm:p-4 text-center mb-2 shadow-lg">
           <h2 className="text-sm sm:text-base font-bold text-zinc-100 flex items-center justify-center gap-2">
             <Trash2 className="w-4 h-4 text-amber-500" />
-            Discard Phase (Exactly {cardsToDiscard} {cardsToDiscard === 1 ? 'card' : 'cards'})
+            Discard Phase — Select {cardsToDiscard} card{cardsToDiscard === 1 ? '' : 's'}
           </h2>
           <p className="text-xs text-zinc-400 mt-1">
             {hasDiscarded
-              ? `You discarded ${discarded.length} cards. Waiting for table to finish.`
-              : `Select exactly ${cardsToDiscard} cards from your hand to discard from this round.`}
+              ? `You discarded ${discarded.length} card${discarded.length === 1 ? '' : 's'}. Waiting for table to finish.`
+              : `Tap exactly ${cardsToDiscard} card${cardsToDiscard === 1 ? '' : 's'} from your hand to remove from this round.`}
           </p>
 
           {/* Players Status Chips */}
-          <div className="mt-2.5 pt-2 border-t border-zinc-800/80 flex flex-wrap items-center justify-center gap-1.5 text-xs">
+          <div className="mt-2.5 pt-2 border-t border-zinc-800/80 flex flex-wrap items-center justify-center gap-1.5">
             {players.map((p) => (
               <span
                 key={p.id}
-                className={`px-2 py-0.5 rounded-full border text-[11px] flex items-center gap-1.5 ${
+                className={`px-2 py-0.5 rounded-full border text-[11px] flex items-center gap-1 ${
                   p.hasDiscarded
                     ? 'bg-emerald-950/40 border-emerald-800/60 text-emerald-300'
                     : 'bg-zinc-800/60 border-zinc-700/60 text-zinc-400'
@@ -89,21 +89,21 @@ export const DiscardPhase: React.FC<DiscardPhaseProps> = ({
                   }`}
                 />
                 <span className="font-medium">{p.name}</span>
-                <span>{p.hasDiscarded ? '✓' : '...'}</span>
+                {p.hasDiscarded ? '✓' : '…'}
               </span>
             ))}
           </div>
 
           {/* Host Start Playing Button */}
           {isHost && (
-            <div className="mt-3 pt-2.5 border-t border-zinc-800/80 flex items-center justify-center">
+            <div className="mt-3 pt-2.5 border-t border-zinc-800/80">
               <button
                 type="button"
                 disabled={!allPlayersDiscarded}
                 onClick={onHostStartPlay}
-                className={`px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 ${
+                className={`w-full sm:w-auto px-5 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 ${
                   allPlayersDiscarded
-                    ? 'bg-white text-black hover:bg-zinc-200 shadow-xl cursor-pointer'
+                    ? 'bg-white text-black hover:bg-zinc-200 shadow-xl cursor-pointer active:scale-95'
                     : 'bg-zinc-800/50 text-zinc-500 border border-zinc-800 cursor-not-allowed'
                 }`}
               >
@@ -115,7 +115,7 @@ export const DiscardPhase: React.FC<DiscardPhaseProps> = ({
                 ) : (
                   <>
                     <Clock className="w-4 h-4 text-zinc-500" />
-                    <span>Waiting for all to discard ({playersDiscardedCount}/{totalPlayers})</span>
+                    <span>Waiting ({playersDiscardedCount}/{totalPlayers})</span>
                   </>
                 )}
               </button>
@@ -124,30 +124,30 @@ export const DiscardPhase: React.FC<DiscardPhaseProps> = ({
         </div>
       )}
 
-      {/* Discard Action Button for Current Player: Hidden during Organize Mode */}
+      {/* Discard Confirm Button: Hidden during Organize Mode */}
       {!isOrganizeMode && !hasDiscarded && (
-        <div className="mb-2 flex flex-col items-center">
+        <div className="mb-2">
           <button
             type="button"
             disabled={selectedForDiscard.length !== cardsToDiscard}
             onClick={handleCommitDiscard}
-            className={`px-5 py-2 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 shadow-lg ${
+            className={`px-6 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 shadow-lg active:scale-95 ${
               selectedForDiscard.length === cardsToDiscard
-                ? 'bg-red-600 hover:bg-red-500 text-white cursor-pointer animate-pulse'
+                ? 'bg-red-600 hover:bg-red-500 text-white cursor-pointer'
                 : 'bg-zinc-800/60 text-zinc-500 border border-zinc-800 cursor-not-allowed'
             }`}
           >
             <Trash2 className="w-4 h-4" />
             <span>
               {selectedForDiscard.length === cardsToDiscard
-                ? `Confirm Discard (${cardsToDiscard} cards)`
-                : `Select ${remainingToSelect} more card${remainingToSelect === 1 ? '' : 's'} to discard`}
+                ? `Confirm Discard (${cardsToDiscard})`
+                : `Select ${remainingToSelect} more`}
             </span>
           </button>
         </div>
       )}
 
-      {/* Hand Component with DnD kit */}
+      {/* Hand with DnD kit */}
       <div className="w-full">
         <PlayerHand
           cards={hand}
@@ -157,7 +157,7 @@ export const DiscardPhase: React.FC<DiscardPhaseProps> = ({
           phaseLabel={
             hasDiscarded
               ? 'Discards submitted'
-              : `Selected ${selectedForDiscard.length}/${cardsToDiscard} to discard`
+              : `${selectedForDiscard.length}/${cardsToDiscard} selected`
           }
           isOrganizeMode={isOrganizeMode}
           setIsOrganizeMode={setIsOrganizeMode}

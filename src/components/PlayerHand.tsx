@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   DndContext,
   closestCenter,
@@ -24,7 +24,7 @@ import {
 import { Card, HandViewMode } from '@/types/game';
 import { SortableCard } from './SortableCard';
 import { PlayingCard } from './PlayingCard';
-import { Layers, AlignJustify, Sparkles, Undo2, Check } from 'lucide-react';
+import { Layers, AlignJustify, Sparkles, Undo2, Check, GripVertical } from 'lucide-react';
 import { saveHandViewMode, loadHandViewMode } from '@/lib/storage';
 
 interface PlayerHandProps {
@@ -55,25 +55,103 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
   const lastOverIdRef = useRef<string | null>(null);
   const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Custom scroll indicator state for organize mode
+  const [scrollThumbTop, setScrollThumbTop] = useState(0);
+  const [scrollThumbHeight, setScrollThumbHeight] = useState(0);
+  const [showScrollRail, setShowScrollRail] = useState(false);
+  const [isDraggingThumb, setIsDraggingThumb] = useState(false);
+  const scrollRailRef = useRef<HTMLDivElement>(null);
+  const thumbDragStartRef = useRef<{ startY: number; startScrollTop: number } | null>(null);
+
   useEffect(() => {
     setViewMode(loadHandViewMode());
   }, []);
 
-  // Toggle prominent page scrollbar on document.body during organize mode
-  useEffect(() => {
-    if (typeof document !== 'undefined') {
-      if (isOrganizeMode) {
-        document.body.classList.add('organize-mode-active');
-      } else {
-        document.body.classList.remove('organize-mode-active');
-      }
+  // Scroll position tracker for custom scroll indicator during organize mode
+  const updateScrollIndicator = useCallback(() => {
+    if (!isOrganizeMode) return;
+    const doc = document.documentElement;
+    const scrollTop = window.scrollY || doc.scrollTop;
+    const scrollHeight = doc.scrollHeight;
+    const clientHeight = doc.clientHeight;
+    const maxScroll = scrollHeight - clientHeight;
+
+    if (maxScroll <= 0) {
+      setShowScrollRail(false);
+      return;
     }
-    return () => {
-      if (typeof document !== 'undefined') {
-        document.body.classList.remove('organize-mode-active');
-      }
-    };
+
+    setShowScrollRail(true);
+
+    const railHeight = clientHeight - 120; // Account for sticky header + padding
+    const thumbH = Math.max(44, (clientHeight / scrollHeight) * railHeight); // Min 44px for touch
+    const thumbT = (scrollTop / maxScroll) * (railHeight - thumbH);
+
+    setScrollThumbHeight(thumbH);
+    setScrollThumbTop(thumbT);
   }, [isOrganizeMode]);
+
+  useEffect(() => {
+    if (isOrganizeMode) {
+      updateScrollIndicator();
+      window.addEventListener('scroll', updateScrollIndicator, { passive: true });
+      window.addEventListener('resize', updateScrollIndicator, { passive: true });
+      return () => {
+        window.removeEventListener('scroll', updateScrollIndicator);
+        window.removeEventListener('resize', updateScrollIndicator);
+      };
+    } else {
+      setShowScrollRail(false);
+    }
+  }, [isOrganizeMode, updateScrollIndicator, cards.length]);
+
+  // Custom scroll thumb drag handlers
+  const handleThumbPointerDown = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingThumb(true);
+    thumbDragStartRef.current = {
+      startY: e.clientY,
+      startScrollTop: window.scrollY,
+    };
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  }, []);
+
+  const handleThumbPointerMove = useCallback((e: React.PointerEvent) => {
+    if (!isDraggingThumb || !thumbDragStartRef.current) return;
+    e.preventDefault();
+
+    const doc = document.documentElement;
+    const clientHeight = doc.clientHeight;
+    const scrollHeight = doc.scrollHeight;
+    const maxScroll = scrollHeight - clientHeight;
+    const railHeight = clientHeight - 120;
+
+    const deltaY = e.clientY - thumbDragStartRef.current.startY;
+    const scrollDelta = (deltaY / railHeight) * maxScroll;
+    const newScroll = Math.max(0, Math.min(maxScroll, thumbDragStartRef.current.startScrollTop + scrollDelta));
+
+    window.scrollTo({ top: newScroll, behavior: 'auto' });
+  }, [isDraggingThumb]);
+
+  const handleThumbPointerUp = useCallback((e: React.PointerEvent) => {
+    setIsDraggingThumb(false);
+    thumbDragStartRef.current = null;
+    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+  }, []);
+
+  // Tap on rail to jump scroll position
+  const handleRailClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!scrollRailRef.current) return;
+    const rect = scrollRailRef.current.getBoundingClientRect();
+    const clickY = e.clientY - rect.top;
+    const railHeight = rect.height;
+
+    const doc = document.documentElement;
+    const maxScroll = doc.scrollHeight - doc.clientHeight;
+    const ratio = clickY / railHeight;
+    window.scrollTo({ top: ratio * maxScroll, behavior: 'smooth' });
+  }, []);
 
   const handleToggleViewMode = () => {
     const next = viewMode === 'fanned' ? 'segregated' : 'fanned';
@@ -81,18 +159,12 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
     saveHandViewMode(next);
   };
 
-  // Sensors: mouse and rapid touch sensor with low activation threshold
   const sensors = useSensors(
     useSensor(MouseSensor, {
-      activationConstraint: {
-        distance: 5,
-      },
+      activationConstraint: { distance: 5 },
     }),
     useSensor(TouchSensor, {
-      activationConstraint: {
-        delay: 50,
-        tolerance: 8,
-      },
+      activationConstraint: { delay: 50, tolerance: 8 },
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
@@ -101,11 +173,7 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
 
   const triggerHaptic = (ms: number = 15) => {
     if (typeof window !== 'undefined' && 'vibrate' in navigator) {
-      try {
-        navigator.vibrate(ms);
-      } catch (e) {
-        // Haptics fallback
-      }
+      try { navigator.vibrate(ms); } catch (e) { /* fallback */ }
     }
   };
 
@@ -143,9 +211,7 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
 
       setShowUndoToast(true);
       if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
-      toastTimeoutRef.current = setTimeout(() => {
-        setShowUndoToast(false);
-      }, 5000);
+      toastTimeoutRef.current = setTimeout(() => setShowUndoToast(false), 5000);
     }
   };
 
@@ -171,9 +237,7 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
 
     setShowUndoToast(true);
     if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
-    toastTimeoutRef.current = setTimeout(() => {
-      setShowUndoToast(false);
-    }, 5000);
+    toastTimeoutRef.current = setTimeout(() => setShowUndoToast(false), 5000);
   };
 
   const activeCard = activeCardId ? cards.find((c) => c.id === activeCardId) : null;
@@ -181,8 +245,12 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
 
   return (
     <div className="w-full flex flex-col items-center select-none py-1 relative">
-      {/* Hand Controls Header */}
-      <div className="w-full max-w-4xl px-3 py-1.5 flex items-center justify-between gap-2 border-b border-zinc-800/80 mb-2">
+      {/* Hand Controls Header — STICKY during organize mode so it never scrolls away */}
+      <div
+        className={`w-full max-w-4xl px-3 py-2 flex items-center justify-between gap-2 border-b border-zinc-800/80 bg-zinc-950 z-30 ${
+          isOrganizeMode ? 'sticky top-[44px] sm:top-[48px] shadow-lg shadow-black/40' : ''
+        }`}
+      >
         <div className="flex items-center gap-2">
           <span className="text-xs font-bold tracking-wider uppercase text-zinc-300">
             {isOrganizeMode ? 'Organize Mode' : 'Your Hand'}
@@ -193,6 +261,11 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
           {phaseLabel && !isOrganizeMode && (
             <span className="hidden sm:inline-block text-xs text-zinc-400">• {phaseLabel}</span>
           )}
+          {isOrganizeMode && (
+            <span className="text-[11px] text-amber-400/80 hidden sm:inline">
+              Drag cards to reorder
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
@@ -201,7 +274,7 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
             <button
               type="button"
               onClick={handleToggleViewMode}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-xs text-zinc-300 transition-colors"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-600 text-xs text-zinc-300 transition-colors active:scale-95"
             >
               {viewMode === 'fanned' ? (
                 <>
@@ -211,30 +284,30 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
               ) : (
                 <>
                   <AlignJustify className="w-3.5 h-3.5 text-zinc-400" />
-                  <span className="hidden xs:inline">Segregated</span>
+                  <span className="hidden xs:inline">Spread</span>
                 </>
               )}
             </button>
           )}
 
-          {/* Organize Mode Button */}
+          {/* Organize Mode Toggle */}
           <button
             type="button"
             onClick={() => setIsOrganizeMode((prev) => !prev)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-md ${
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all active:scale-95 ${
               isOrganizeMode
-                ? 'bg-amber-400 text-black hover:bg-amber-300 shadow-amber-500/20'
+                ? 'bg-amber-400 text-black hover:bg-amber-300 shadow-lg shadow-amber-500/25'
                 : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700'
             }`}
           >
             {isOrganizeMode ? (
               <>
-                <Check className="w-3.5 h-3.5" />
+                <Check className="w-4 h-4" />
                 <span>Done</span>
               </>
             ) : (
               <>
-                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                <Sparkles className="w-4 h-4 text-amber-400" />
                 <span>Organize</span>
               </>
             )}
@@ -242,11 +315,11 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
         </div>
       </div>
 
-      {/* Cards Area (Directly on page when in organize mode, no inner scroll container!) */}
+      {/* Cards Area — directly on page, no inner scroll container */}
       <div
         className={`w-full max-w-5xl ${
           isOrganizeMode
-            ? 'px-2 py-3' /* Direct on the main page - no max-h, no overflow-y-auto! */
+            ? 'px-2 sm:px-4 py-4'
             : 'overflow-x-auto overflow-y-visible px-3 py-3 min-h-[125px] sm:min-h-[155px] scroll-smooth'
         }`}
       >
@@ -262,15 +335,15 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
             onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}
             autoScroll={{
-              threshold: { x: 0.05, y: 0.15 },
-              acceleration: 1.5,
-              interval: 20,
+              threshold: { x: 0.05, y: 0.12 },
+              acceleration: 2,
+              interval: 15,
             }}
           >
             <SortableContext items={cards.map((c) => c.id)} strategy={sortingStrategy}>
               {isOrganizeMode ? (
-                /* Organize Mode: Responsive Grid directly on the main page */
-                <div className="grid grid-cols-3 xs:grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-2.5 sm:gap-3 py-2">
+                /* Organize Mode: Responsive Grid — flows directly on main page */
+                <div className="grid grid-cols-3 xs:grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-2.5 sm:gap-3 py-1">
                   {cards.map((card, idx) => (
                     <SortableCard
                       key={card.id}
@@ -288,7 +361,7 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
                   ))}
                 </div>
               ) : (
-                /* Normal Mode: Guaranteed height horizontal cards row */
+                /* Normal Mode: Guaranteed height horizontal hand */
                 <div
                   className={`flex items-center justify-center min-w-max mx-auto py-1 ${
                     viewMode === 'segregated' ? 'gap-2 sm:gap-3' : 'gap-0'
@@ -324,6 +397,40 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
           </DndContext>
         )}
       </div>
+
+      {/* ══════════ CUSTOM SCROLL RAIL — Big, amber, always visible during organize mode ══════════ */}
+      {isOrganizeMode && showScrollRail && (
+        <div
+          ref={scrollRailRef}
+          onClick={handleRailClick}
+          className="fixed right-0 top-[100px] bottom-[20px] w-[22px] z-50 flex items-start justify-center cursor-pointer"
+          style={{ touchAction: 'none' }}
+        >
+          {/* Rail track background */}
+          <div className="absolute inset-y-0 right-[3px] w-[16px] rounded-full bg-zinc-800/90 border border-zinc-700/60" />
+
+          {/* Thumb — big, amber, always visible, draggable */}
+          <div
+            onPointerDown={handleThumbPointerDown}
+            onPointerMove={handleThumbPointerMove}
+            onPointerUp={handleThumbPointerUp}
+            onPointerCancel={handleThumbPointerUp}
+            className={`absolute right-[3px] w-[16px] rounded-full transition-colors scroll-rail-glow flex items-center justify-center ${
+              isDraggingThumb
+                ? 'bg-amber-300 scale-x-110'
+                : 'bg-amber-500 hover:bg-amber-400'
+            }`}
+            style={{
+              top: `${scrollThumbTop}px`,
+              height: `${scrollThumbHeight}px`,
+              touchAction: 'none',
+              minHeight: '44px',
+            }}
+          >
+            <GripVertical className="w-3 h-3 text-black/50 pointer-events-none" />
+          </div>
+        </div>
+      )}
 
       {/* Reorder Undo Toast Snackbar */}
       {showUndoToast && (
